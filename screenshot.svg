@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
+  <rect width="900" height="620" fill="#0d1117"/>
+  <rect width="900" height="35" fill="#161b22"/>
+  <circle cx="18" cy="17" r="7" fill="#ff5f56"/>
+  <circle cx="40" cy="17" r="7" fill="#ffbd2e"/>
+  <circle cx="62" cy="17" r="7" fill="#27c93f"/>
+  <text x="450" y="23" fill="#8b949e" font-family="monospace" font-size="13" text-anchor="middle">Termux — hack-scanner</text>
+  <text x="20" y="65" fill="#c678dd" font-family="monospace" font-size="15" font-weight="bold">  ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░</text>
+  <text x="20" y="105" fill="#61afef" font-family="monospace" font-size="14">   ╔══════════════════════════════════════════╗</text>
+  <text x="20" y="125" fill="#61afef" font-family="monospace" font-size="14">   ║     H A C K   S C A N N E R  v25.2       ║</text>
+  <text x="20" y="145" fill="#61afef" font-family="monospace" font-size="14">   ╚══════════════════════════════════════════╝</text>
+  <text x="20" y="185" fill="#abb2bf" font-family="monospace" font-size="13">  ➜ Target: example.com</text>
+  <text x="20" y="210" fill="#e5c07b" font-family="monospace" font-size="13">  ⚠ Wildcard: 1251B (auto-filtered)</text>
+  <text x="20" y="245" fill="#e5c07b" font-family="monospace" font-size="13">  ➜ 1</text>
+  <text x="20" y="275" fill="#61afef" font-family="monospace" font-size="13">  ┌─ SCANNING [dirsearch]</text>
+  <text x="20" y="295" fill="#61afef" font-family="monospace" font-size="13">  │ ✔ done</text>
+  <text x="20" y="315" fill="#61afef" font-family="monospace" font-size="13">  └─</text>
+  <text x="20" y="355" fill="#e06c75" font-family="monospace" font-size="13" font-weight="bold">  ▸ CRITICAL</text>
+  <text x="20" y="375" fill="#e06c75" font-family="monospace" font-size="13">  │ [200] 34816B → /webmail/config</text>
+  <text x="20" y="395" fill="#e06c75" font-family="monospace" font-size="13">  │ [302] 82944B → /admin/settings.php</text>
+  <text x="20" y="425" fill="#e5c07b" font-family="monospace" font-size="13" font-weight="bold">  ▸ WARNING</text>
+  <text x="20" y="445" fill="#e5c07b" font-family="monospace" font-size="13">  │ [200] 18432B → /admin/login.php</text>
+  <text x="20" y="475" fill="#e06c75" font-family="monospace" font-size="13" font-weight="bold">  ▸ REDIRECT LEAK</text>
+  <text x="20" y="495" fill="#e06c75" font-family="monospace" font-size="13">  │ [302] 82993B → /admin/settings.php</text>
+  <text x="20" y="530" fill="#98c379" font-family="monospace" font-size="13">  Summary: 6 critical · 39 warning · 0 info</text>
+  <text x="20" y="560" fill="#61afef" font-family="monospace" font-size="13">  ┌─ SCANNING [godirb]</text>
+  <text x="20" y="580" fill="#98c379" font-family="monospace" font-size="13">  │ ✔ 3 REDIRECT LEAK detected</text>
+  <text x="20" y="600" fill="#61afef" font-family="monospace" font-size="13">  └─ done</text>
+</svg>
