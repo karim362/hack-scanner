@@ -37,6 +37,21 @@ sanitize_url() {
 }
 classify_severity() {
     local p="$1"
+    local code="${2:-0}"
+    local size="${3:-0}"
+    if [[ "$code" == "308" || "$code" == "301" ]] && [ "$size" -lt 200 ] 2>/dev/null; then echo LOW; return; fi
+    local c="$2"
+    local s="$3"
+    # 308/302/301 بحجم صغير (< 200B) = redirect فارغ، ليس ثغرة
+    if [[ "$c" =~ ^(301|302|307|308)$ ]] && [ "${s:-0}" -lt 200 ] 2>/dev/null; then
+        echo "LOW"
+        return
+    fi
+    # 308 = Next.js trailing-slash redirect، دائماً LOW
+    if [ "$c" = "308" ]; then
+        echo "LOW"
+        return
+    fi
     echo "$p" | grep -qiE '\.(env|git|ssh|aws|docker|kube|pem|key|ppk)|config|settings|wp-config|backup|database|dump|\.sql|\.bak|\.swp|credentials|secret|password|adminer|phpmyadmin|pma|setup-config' && echo CRITICAL && return
     echo "$p" | grep -qiE 'admin|login|panel|dashboard|install|setup|api|graphql|swagger|console|manager|portal|user|account|webmail|cpanel|whm' && echo WARNING && return
     echo "$p" | grep -qiE 'robots|sitemap|favicon|\.txt|\.xml|\.ico|\.png|\.jpg|\.svg|well-known|security|ads' && echo INFO && return
@@ -121,19 +136,21 @@ printf "  ${BC}│${N}  "
 SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 (
     if [ "$TOOL" = "3" ]; then
-        "$FFUF" -u "https://$HOST/FUZZ" -w "$WL" -t 60 -mc 200,301,302,307,308 -fc 403,404,400,405,408 -of json -o "$TMP.json" -noninteractive >/dev/null 2>&1
-        if [ -f "$TMP.json" ]; then
+        "$FFUF" -u "https://$HOST/FUZZ" -w "$WL" -t 60 -mc 200,301,302,307,308 -fs "$WC_PRE" -s -of json -o "$TMP.json" >/dev/null 2>&1
+        if [ -f "$TMP.json" ] && [ -s "$TMP.json" ]; then
             python3 -c "
-import json
+import json, sys
 try:
-    with open('$TMP.json') as f:
-        d = json.load(f)
+    d = json.load(open('$TMP.json'))
     for r in d.get('results', []):
         u = r.get('url', '')
-        rest = u.split('://', 1)[-1]
-        p = '/' + rest.split('/', 1)[1] if '/' in rest else '/'
-        print(f\"{r.get('status',0)}|{r.get('length',0)}|{p}\")
-except: pass
+        st = r.get('status', 0)
+        ln = r.get('length', 0)
+        p = u.split('$HOST', 1)[-1] if '$HOST' in u else '/'
+        if not p.startswith('/'): p = '/' + p
+        print(f'{st}|{ln}|{p}')
+except Exception as e:
+    pass
 " > "$TMP"
             rm -f "$TMP.json"
         fi
@@ -183,14 +200,14 @@ RES=$(mktemp); trap "rm -f $TMP $RES" EXIT
 if [ "$TOOL" = "3" ]; then
     while IFS='|' read -r c s p; do
         [ -z "$c" ] || [ -z "$s" ] || [ -z "$p" ] && continue
-        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p"); echo "$sev|$c|$s|$p" >> "$RES"; }
+        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p" "$c" "$s" "$c" "$s"); echo "$sev|$c|$s|$p" >> "$RES"; }
     done <<< "$RAW"
 elif [ "$TOOL" = "2" ]; then
     while IFS= read -r l; do
         [ -z "$l" ] && continue
         p=$(echo "$l" | grep -oE 'https?://[^ ]+' | sed "s|https\?://$HOST||"); c=$(echo "$l" | awk '{print $2}'); s=$(echo "$l" | grep -oE '[0-9]+ B' | awk '{print $1}')
         [ -z "$p" ] || [ -z "$s" ] && continue
-        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p"); echo "$sev|$c|$s|$p" >> "$RES"; }
+        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p" "$c" "$s" "$c" "$s"); echo "$sev|$c|$s|$p" >> "$RES"; }
     done <<< "$RAW"
 else
     while IFS= read -r l; do
@@ -200,7 +217,7 @@ else
         rs=$(echo "$l" | grep -oE '[0-9]+(\.[0-9]+)?[KMGT]?B' | head -1)
         [ -z "$rs" ] && continue
         s=$(parse_size "$rs")
-        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p"); echo "$sev|$c|$s|$p" >> "$RES"; }
+        echo "$WILD" | grep -qw "$s" || { sev=$(classify_severity "$p" "$c" "$s" "$c" "$s"); echo "$sev|$c|$s|$p" >> "$RES"; }
     done <<< "$RAW"
 fi
 LEAK=$(mktemp); trap "rm -f $TMP $RES $LEAK" EXIT
