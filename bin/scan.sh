@@ -158,7 +158,11 @@ except Exception as e:
         "$GODIRB" -u "$TARGET" -w "$WL" -t 60 -i 403,404,400,405,408 > "$TMP" 2>&1
     else
         cd "$TOOLS/dirsearch" 2>/dev/null
-        python3 "$DIRSEARCH" -u "$TARGET" -w "$WL" -t 20 --timeout 5 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
+        if [ -x ".venv/bin/python3" ]; then
+            .venv/bin/python3 "$DIRSEARCH" -u "$TARGET" -w "$WL" -t 20 --timeout 5 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
+        else
+            python3 "$DIRSEARCH" -u "$TARGET" -w "$WL" -t 20 --timeout 5 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
+        fi
     fi
 ) &
 PID=$!; i=0

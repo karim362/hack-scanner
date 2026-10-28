@@ -30,7 +30,16 @@ install_dirsearch() {
     [ -f "$TOOLS/dirsearch/dirsearch.py" ] && return
     echo "  → Installing dirsearch..."
     git clone --depth 1 https://github.com/maurosoria/dirsearch.git "$TOOLS/dirsearch" 2>/dev/null
-    (cd "$TOOLS/dirsearch" && pip3 install -q -r requirements.txt 2>/dev/null || pip install -q -r requirements.txt)
+    cd "$TOOLS/dirsearch" || return
+    if pip3 install -q -r requirements.txt 2>/dev/null; then
+        return
+    fi
+    if pip3 install -q --break-system-packages -r requirements.txt 2>/dev/null; then
+        echo "  ok dirsearch deps (--break-system-packages)"
+        return
+    fi
+    echo "  -> Creating venv..."
+    python3 -m venv .venv 2>/dev/null && .venv/bin/pip install -q -r requirements.txt 2>/dev/null && echo "  ok dirsearch deps (venv)"
 }
 install_godirb() {
     [ -x "$TOOLS/godirb" ] && return
