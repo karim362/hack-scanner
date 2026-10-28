@@ -234,7 +234,7 @@ while IFS='|' read -r sev c s p; do
 done < "$RES"
 ORD=$(mktemp); trap "rm -f $TMP $RES $LEAK $ORD" EXIT
 awk -F'|' '{r=4; if($1=="CRITICAL")r=1; else if($1=="WARNING")r=2; else if($1=="INFO")r=3; print r"|"$0}' "$RES" | sort -t'|' -k1,1n | cut -d'|' -f2- > "$ORD"
-FOUND=$(wc -l < "$ORD" | head -1); LF=$(wc -l < "$LEAK" 2>/dev/null | head -1); LF=${LF:-0}
+FOUND=$(awk -F"|" '$2!="301" && $2!="302" && $2!="307" && $2!="308"' "$ORD" | wc -l); LF=$(wc -l < "$LEAK" 2>/dev/null | head -1); LF=${LF:-0}
 title "🎬 Findings"
 if [ "$FOUND" -eq 0 ] && [ "$LF" -eq 0 ]; then
     printf "  ${G}✔ No vulnerabilities${N}\n"
@@ -248,6 +248,7 @@ else
     PREV=""; sleep 0.2
     while IFS='|' read -r sev c s p; do
         [ -z "$sev" ] && continue
+        case "$c" in 301|302|307|308) continue ;; esac
         if [ "$sev" != "$PREV" ]; then
             case "$sev" in CRITICAL) printf "\n  ${BR}▸ CRITICAL${N}\n";; WARNING) printf "\n  ${BY}▸ WARNING${N}\n";; INFO) printf "\n  ${BG}▸ INFO${N}\n";; *) printf "\n  ${BC}▸ LOW${N}\n";; esac
             PREV="$sev"
@@ -261,7 +262,7 @@ echo ""; line
 CR=$(grep -c '^CRITICAL|' "$ORD" 2>/dev/null | head -1); CR=${CR:-0}
 WR=$(grep -c '^WARNING|' "$ORD" 2>/dev/null | head -1); WR=${WR:-0}
 IN=$(grep -c '^INFO|' "$ORD" 2>/dev/null | head -1); IN=${IN:-0}
-LO=$(grep -c '^LOW|' "$ORD" 2>/dev/null | head -1); LO=${LO:-0}
+LO=$(awk -F"|" '$1=="LOW" && $2!="301" && $2!="302" && $2!="307" && $2!="308"' "$ORD" | wc -l); LO=${LO:-0}
 printf "  ${W}Summary:${N} ${BR}$CR${N} critical · ${BY}$WR${N} warning · ${BG}$IN${N} info · ${BC}$LO${N} low"
 [ "$LF" -gt 0 ] && printf " · ${BR}${LF} LEAK${N}"
 printf "\n\n"
