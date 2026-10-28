@@ -55,26 +55,40 @@ install_godirb() {
     echo "  ⚠ godirb skipped (Go not available)"
 }
 install_ffuf() {
-    local arch="$1" os="$2"
     [ -x "$TOOLS/ffuf" ] && return
-    echo "  → Installing ffuf ($os/$arch)..."
+    local os="$1" arch="$2"
+    # On Termux: always build from source (glibc binaries don't run on Bionic)
+    if [ "$os" = "termux" ] || [ -n "$TERMUX_VERSION" ]; then
+        echo "  -> Building ffuf from source (Termux/Bionic)..."
+        if ! command -v go >/dev/null; then
+            echo "  !! Go missing. Run: pkg install golang"
+            return
+        fi
+        rm -rf ${TMPDIR:-/data/data/com.termux/files/usr/tmp}/ffuf-src 2>/dev/null
+        git clone --depth 1 https://github.com/ffuf/ffuf.git ${TMPDIR:-/data/data/com.termux/files/usr/tmp}/ffuf-src 2>/dev/null || { echo "  !! clone failed"; return; }
+        (cd ${TMPDIR:-/data/data/com.termux/files/usr/tmp}/ffuf-src && go build -o "$TOOLS/ffuf" .) || { echo "  !! build failed"; return; }
+        chmod +x "$TOOLS/ffuf"
+        rm -rf ${TMPDIR:-/data/data/com.termux/files/usr/tmp}/ffuf-src
+        echo "  ok ffuf built from source"
+        return
+    fi
+    # Linux/macOS: pre-built binary
+    echo "  -> Installing ffuf ($os/$arch)..."
     local a="" osn="linux"
     case "$arch" in
         arm64) a="arm64" ;;
         amd64) a="amd64" ;;
         armv7) a="armv7" ;;
-        *) echo "  ⚠ Unknown arch"; return ;;
+        *) echo "  !! unknown arch"; return ;;
     esac
     [ "$os" = "macos" ] && osn="darwin"
-    # URLs الصحيحة لـ ffuf
     local url="https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_${osn}_${a}.tar.gz"
     local tmp=$(mktemp -d)
-    rm -f "$TOOLS/ffuf" 2>/dev/null
     if curl -sL "$url" -o "$tmp/f.tar.gz" && tar -xzf "$tmp/f.tar.gz" -C "$tmp" 2>/dev/null; then
         cp "$tmp/ffuf" "$TOOLS/ffuf" && chmod +x "$TOOLS/ffuf"
-        echo "  ✔ ffuf installed"
+        echo "  ok ffuf installed"
     else
-        echo "  ⚠ ffuf failed (will use dirsearch)"
+        echo "  !! ffuf download failed"
     fi
     rm -rf "$tmp"
 }
