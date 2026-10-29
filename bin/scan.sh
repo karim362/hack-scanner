@@ -225,13 +225,29 @@ title "🔬 Analyzing (fast)"
 # Parse results from tool output
 RAW=$(mktemp); trap "rm -f $TMP $RAW; rm -rf $CAL_DIR" EXIT
 if [ "$TOOL" = "2" ]; then
-    # ffuf format: path [Status: 200, Size: 1234, ...]
+    # ffuf: <path> [Status: NNN, Size: NNN, ...]
     while IFS= read -r l; do
         [ -z "$l" ] && continue
-        p=$(printf '%s' "$l" | awk '{print $1}')
-        c=$(printf '%s' "$l" | grep -oE 'Status: [0-9]+' | head -1 | awk '{print $2}')
-        s=$(printf '%s' "$l" | grep -oE 'Size: [0-9]+' | head -1 | awk '{print $2}')
-        [ -n "$p" ] && [ -n "$c" ] && [ -n "$s" ] && echo "$c|$s|/$p"
+        # Skip progress/banner/header lines
+        case "$l" in
+            ::*|*":: "*"Progress"*) continue ;;
+            *"Progress:"*|*"Method :"*|*"URL :"*|*"Wordlist :"*|*"Threads :"*) continue ;;
+            *"Matcher :"*|*"Timeout :"*|*"Duration :"*|*"Follow redirects :"*|*"Calibration :"*) continue ;;
+            *"Output file :"*|*"File format :"*) continue ;;
+        esac
+        # Must have Status: and Size:
+        [[ "$l" != *"[Status: "* ]] && continue
+        [[ "$l" != *", Size: "* ]] && continue
+        # Path = everything before " [Status:"
+        prefix="${l%% \[Status:*}"
+        p=$(printf '%s' "$prefix" | awk '{print $NF}' | tr -d '\r\n ')
+        [ -z "$p" ] && continue
+        [ "$p" = "::" ] && continue
+        [[ "$p" == ::* ]] && continue
+        [[ ! "$p" =~ ^[a-zA-Z0-9._/~-] ]] && continue
+        c=$(printf '%s' "$l" | sed -n 's/.*\[Status: \([0-9]*\).*/\1/p' | head -1)
+        s=$(printf '%s' "$l" | sed -n 's/.*, Size: \([0-9]*\).*/\1/p' | head -1)
+        [ -n "$c" ] && [ -n "$s" ] && echo "$c|$s|/$p"
     done < "$TMP" > "$RAW"
 elif [ "$TOOL" = "1" ]; then
     # dirsearch: [HH:MM:SS] 200 - 1234B - /path
@@ -256,18 +272,46 @@ else
 fi
 TOTAL_RAW=$(wc -l < "$RAW" | tr -d ' ')
 printf "  ${D}Raw responses: ${W}${TOTAL_RAW}${N}\n"
-# === FAST FILTER (no per-result curl) ===
+# === CLUSTER-BASED FILTER (independent of calibration) ===
+# Group results by 500-byte buckets; any bucket with >5 results = soft-404
+declare -A SIZE_BUCKETS
+while IFS='|' read -r c s p; do
+    [ -z "$s" ] && continue
+    b=$((s / 500))
+    SIZE_BUCKETS[$b]=$(( ${SIZE_BUCKETS[$b]:-0} + 1 ))
+done < "$RAW"
+# Find largest bucket
+MAX_BUCKET=0
+MAX_COUNT=0
+for b in "${!SIZE_BUCKETS[@]}"; do
+    if [ "${SIZE_BUCKETS[$b]}" -gt "$MAX_COUNT" ]; then
+        MAX_COUNT=${SIZE_BUCKETS[$b]}
+        MAX_BUCKET=$b
+    fi
+done
+# Fallback: use calibration range if cluster detection weak
+if [ "$MAX_COUNT" -lt 5 ] && [ "$RANGE_LOW" -gt 0 ]; then
+    MAX_BUCKET=$((RANGE_LOW / 500))
+    MAX_COUNT=${SIZE_BUCKETS[$MAX_BUCKET]:-0}
+fi
+CLUSTER_LOW=$((MAX_BUCKET * 500))
+CLUSTER_HIGH=$((MAX_BUCKET * 500 + 499))
+if [ "$MAX_COUNT" -ge 5 ]; then
+    printf "  ${Y}⚠ Cluster baseline: ${W}${CLUSTER_LOW}-${CLUSTER_HIGH}B${N} (${MAX_COUNT} responses)\n"
+fi
+# Filter by cluster
 FINAL=$(mktemp)
 FAKE=0
 REAL=0
 while IFS='|' read -r c s p; do
     [ -z "$p" ] && continue
-    # Filter 1: Soft-404 size range (no curl)
-    if [ "$RANGE_LOW" -gt 0 ] && [ "$s" -ge "$RANGE_LOW" ] 2>/dev/null && [ "$s" -le "$RANGE_HIGH" ] 2>/dev/null; then
+    [ "$p" = "::" ] && { FAKE=$((FAKE+1)); continue; }
+    # Filter: cluster bucket
+    if [ "$MAX_COUNT" -ge 5 ] && [ "$s" -ge "$CLUSTER_LOW" ] 2>/dev/null && [ "$s" -le "$CLUSTER_HIGH" ] 2>/dev/null; then
         FAKE=$((FAKE+1))
         continue
     fi
-    # Filter 2: tiny responses
+    # Filter: tiny 200s
     if [ "$s" -lt 100 ] 2>/dev/null && [ "$c" = "200" ]; then
         FAKE=$((FAKE+1))
         continue
@@ -276,7 +320,7 @@ while IFS='|' read -r c s p; do
     echo "$sev|$c|$s|$p" >> "$FINAL"
     REAL=$((REAL+1))
 done < "$RAW"
-printf "  ${Y}✔ Filtered ${FAKE} soft-404s${N}\n"
+printf "  ${Y}✔ Filtered ${FAKE} soft-404s (${REAL} candidates remain)${N}\n"
 # === CONTENT VALIDATION (parallel, max 15 CRITICAL) ===
 CRIT_LIST=$(grep '^CRITICAL|' "$FINAL" 2>/dev/null | head -15)
 if [ -n "$CRIT_LIST" ]; then
