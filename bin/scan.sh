@@ -180,9 +180,13 @@ render_bar() {
 }
 # ============ START ============
 banner
-printf "  ${BC}┌─ INPUT${N}\n"
-printf "  ${BC}│${N} ${W}➜ Target:${N} "
-read -r RAW
+if [ -n "${1:-}" ]; then
+    RAW="$1"
+else
+    printf "  ${BC}┌─ INPUT${N}\n"
+    printf "  ${BC}│${N} ${W}➜ Target:${N} "
+    read -r RAW
+fi
 [ -z "$RAW" ] && die "No input."
 HOST="$(sanitize_url "$RAW")"
 [ -z "$HOST" ] && die "Could not parse host."
@@ -462,3 +466,14 @@ printf "\n"
 [ -f "$JSON_FILE" ] && printf "  ${D}Report saved: ${C}$JSON_FILE${N}\n"
 echo ""
 rm -f "$FINAL" "$ORD" "$LEAK" "$RAW"
+
+# === CONTINUOUS MODE: ask for next target ===
+echo ""
+printf "  ${BC}┌─ NEXT${N}\n"
+printf "  ${BC}│${N} ${W}➜ New target (Enter to exit):${N} "
+read -r NEXT_RAW
+if [ -z "$NEXT_RAW" ]; then
+    printf "  ${BC}└─${N} ${D}Bye 👋${N}\n\n"
+    exit 0
+fi
+exec bash "$0" "$NEXT_RAW"
