@@ -136,24 +136,16 @@ printf "  ${BC}│${N}  "
 SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 (
     if [ "$TOOL" = "3" ]; then
-        "$FFUF" -u "https://$HOST/FUZZ" -w "$WL" -t 60 -mc 200,301,302,307,308 -fs "$WC_PRE" -s -of json -o "$TMP.json" >/dev/null 2>&1
-        if [ -f "$TMP.json" ] && [ -s "$TMP.json" ]; then
-            python3 -c "
-import json, sys
-try:
-    d = json.load(open('$TMP.json'))
-    for r in d.get('results', []):
-        u = r.get('url', '')
-        st = r.get('status', 0)
-        ln = r.get('length', 0)
-        p = u.split('$HOST', 1)[-1] if '$HOST' in u else '/'
-        if not p.startswith('/'): p = '/' + p
-        print(f'{st}|{ln}|{p}')
-except Exception as e:
-    pass
-" > "$TMP"
-            rm -f "$TMP.json"
+        "$FFUF" -u "https://$HOST/FUZZ" -w "$WL" -t 60 -mc 200,301,302,307,308 -fc 403,404,400,405,408 -s 2>/dev/null > "$TMP.paths"
+        > "$TMP"
+        if [ -s "$TMP.paths" ]; then
+            while IFS= read -r fp; do
+                [ -z "$fp" ] && continue
+                fres=$(curl -sk -o /dev/null -w "%{http_code}|%{size_download}" --max-time 8 "https://$HOST/$fp" 2>/dev/null)
+                [ -n "$fres" ] && echo "$fres|/$fp" >> "$TMP"
+            done < "$TMP.paths"
         fi
+        rm -f "$TMP.paths"
     elif [ "$TOOL" = "2" ]; then
         "$GODIRB" -u "$TARGET" -w "$WL" -t 60 -i 403,404,400,405,408 > "$TMP" 2>&1
     else
