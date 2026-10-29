@@ -65,6 +65,81 @@ parse_size() {
     elif [[ "$s" == *M ]]; then echo "$s" | sed 's/M//' | awk '{printf "%.0f", $1*1048576}'
     else echo "$s" | awk '{printf "%.0f", $1}'; fi
 }
+validate_content() {
+    local url="$1" path="$2"
+    local tmp=$(mktemp) hdr=$(mktemp)
+    curl -sk -o "$tmp" -D "$hdr" --max-time 10 "$url" 2>/dev/null
+    local ctype=$(grep -i '^content-type:' "$hdr" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '\r')
+    local base=$(basename "$path")
+    local verdict="UNKNOWN"
+
+    # Universal soft-404 markers
+    if grep -qiE '<title>[^<]*(404|not[[:space:]]+found|error|access[[:space:]]+denied|forbidden)[^<]*</title>' "$tmp" 2>/dev/null; then
+        verdict="FAKE"
+    elif grep -qiE '<h1[^>]*>[^<]*(404|not[[:space:]]+found|page[[:space:]]+not[[:space:]]+found)[^<]*</h1>' "$tmp" 2>/dev/null; then
+        verdict="FAKE"
+    fi
+
+    # Extension-specific validation (only if not already FAKE)
+    if [ "$verdict" = "UNKNOWN" ]; then
+        case "$base" in
+            .env|.env.*|*.env)
+                if grep -qiE '<!DOCTYPE|<html|<head>' "$tmp" 2>/dev/null; then
+                    verdict="FAKE"
+                elif grep -qE '^[A-Z][A-Z0-9_]+=' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                fi
+                ;;
+            .git/config|*/git/config)
+                if grep -qE '^\[(core|remote|user|branch)' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                else
+                    verdict="FAKE"
+                fi
+                ;;
+            *.sql|*.sql.gz|*.dump|*.db)
+                if grep -qiE 'CREATE[[:space:]]+TABLE|INSERT[[:space:]]+INTO|DROP[[:space:]]+TABLE|-- MySQL|-- PostgreSQL' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                elif grep -qiE '<!DOCTYPE|<html' "$tmp" 2>/dev/null; then
+                    verdict="FAKE"
+                fi
+                ;;
+            *.php)
+                if grep -q '<?php' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                fi
+                ;;
+            *.zip|*.tar|*.tgz|*.rar|*.7z|*.gz|*.bz2)
+                if echo "$ctype" | grep -qiE 'text/html|application/json' 2>/dev/null; then
+                    verdict="FAKE"
+                elif [ -n "$ctype" ]; then
+                    verdict="REAL"
+                fi
+                ;;
+            *.pem|*.key|*.crt|*.csr)
+                if grep -qE 'BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY|BEGIN CERTIFICATE' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                else
+                    verdict="FAKE"
+                fi
+                ;;
+            *.json)
+                if grep -qE '^\s*[\[{]' "$tmp" 2>/dev/null && ! grep -qiE '<!DOCTYPE|<html' "$tmp" 2>/dev/null; then
+                    verdict="REAL"
+                fi
+                ;;
+            *.log|*.log.bak)
+                if grep -qiE '<!DOCTYPE|<html' "$tmp" 2>/dev/null; then
+                    verdict="FAKE"
+                fi
+                ;;
+        esac
+    fi
+
+    rm -f "$tmp" "$hdr"
+    echo "$verdict"
+}
+
 detect_redirect_leak() {
     local url="$1"
     local b=$(mktemp) h=$(mktemp)
