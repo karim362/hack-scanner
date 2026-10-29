@@ -13,6 +13,65 @@ HR="─────────────────────────�
 line()  { printf "${D}%s${N}\n" "$HR"; }
 title() { printf "\n${M}${W}▸ %s${N}\n" "$1"; line; }
 die()   { printf "${R}  ✖ %s${N}\n" "$1"; exit 1; }
+
+detect_waf() {
+    local host="$1"
+    local hdr=$(curl -skI --max-time 5 "https://$host" 2>/dev/null)
+    if echo "$hdr" | grep -qiE 'cf-ray|cf-cache-status'; then echo "Cloudflare"
+    elif echo "$hdr" | grep -qi 'akamai'; then echo "Akamai"
+    elif echo "$hdr" | grep -qi 'x-sucuri'; then echo "Sucuri"
+    elif echo "$hdr" | grep -qiE 'server:.*nginx'; then echo "Nginx (no WAF)"
+    elif echo "$hdr" | grep -qiE 'server:.*apache'; then echo "Apache (no WAF)"
+    else echo "Unknown"; fi
+}
+detect_tech() {
+    local host="$1"
+    local home=$(curl -sk --max-time 6 "https://$host/" 2>/dev/null)
+    local hdr=$(curl -skI --max-time 5 "https://$host/" 2>/dev/null)
+    if echo "$home" | grep -qiE 'wp-content|wp-includes'; then echo "WordPress"
+    elif echo "$hdr" | grep -qi 'laravel_session'; then echo "Laravel"
+    elif echo "$home" | grep -qiE 'csrfmiddlewaretoken'; then echo "Django"
+    elif echo "$home" | grep -qiE '__NEXT_DATA__|_next/static'; then echo "Next.js"
+    elif echo "$home" | grep -qiE '__NUXT__'; then echo "Nuxt"
+    elif echo "$home" | grep -qiE 'ng-version'; then echo "Angular"
+    elif echo "$home" | grep -qiE 'data-reactroot'; then echo "React"
+    elif echo "$hdr" | grep -qiE 'x-powered-by:.*php'; then echo "PHP"
+    elif echo "$hdr" | grep -qiE 'x-powered-by:.*express'; then echo "Node.js"
+    elif echo "$home" | grep -qi 'joomla'; then echo "Joomla"
+    elif echo "$home" | grep -qi 'drupal'; then echo "Drupal"
+    else echo "Unknown"; fi
+}
+extract_robots() {
+    curl -sk --max-time 6 "https://$1/robots.txt" 2>/dev/null \
+        | grep -iE '^(Disallow|Allow):' 2>/dev/null \
+        | awk '{print $2}' | grep -vE '^$|^\*$|^/$|^\*' | sed 's|/$||'
+}
+extract_sitemap() {
+    curl -sk --max-time 8 "https://$1/sitemap.xml" 2>/dev/null \
+        | grep -oE '<loc>[^<]+</loc>' 2>/dev/null \
+        | sed 's|<loc>||; s|</loc>||' \
+        | sed "s|^https\?://$1||" | grep -vE '^$' | head -50
+}
+send_notification() {
+    local title="$1" content="$2"
+    command -v termux-notification >/dev/null 2>&1 && termux-notification --title "$title" --content "$content" 2>/dev/null &
+    command -v notify-send >/dev/null 2>&1 && notify-send "$title" "$content" 2>/dev/null &
+}
+export_json() {
+    local file="$1" host="$2" ord_file="$3" leak_file="$4"
+    {
+        printf '{\n  "host": "%s",\n  "timestamp": "%s",\n  "findings": [\n' "$host" "$(date -Iseconds)"
+        local first=1
+        [ -f "$ord_file" ] && while IFS='|' read -r sev c s p redir; do
+            [ -z "$sev" ] && continue
+            [ "$first" = "1" ] || printf ',\n'
+            first=0
+            printf '    {"severity":"%s","code":%s,"size":%s,"path":"%s","redirect":"%s"}' "$sev" "$c" "$s" "$p" "${redir:-}"
+        done < "$ord_file"
+        printf '\n  ]\n}\n'
+    } > "$file"
+}
+
 banner() {
     clear
     printf "${BM}"; echo ""
@@ -45,6 +104,20 @@ classify_severity() {
 }
 color_for() { case "$1" in CRITICAL) printf "${BR}";; WARNING) printf "${BY}";; INFO) printf "${BG}";; *) printf "${BC}";; esac; }
 dim_color_for() { case "$1" in CRITICAL) printf "${DIM_R}";; *) printf "${DIM_C}";; esac; }
+code_color() {
+    case "$1" in
+        200)      printf "\033[1;32m" ;;  # bright green
+        201|204)  printf "\033[1;32m" ;;
+        301|302)  printf "\033[1;33m" ;;  # bright yellow
+        303)      printf "\033[1;33m" ;;
+        307|308)  printf "\033[1;36m" ;;  # bright cyan
+        400|401|403|405) printf "\033[1;31m" ;;  # bright red
+        404)      printf "\033[1;37m" ;;  # bright white
+        429)      printf "\033[1;33m" ;;
+        500|502|503|504) printf "\033[1;35m" ;;  # bright magenta
+        *)        printf "\033[1;37m" ;;
+    esac
+}
 parse_size() {
     local s="$1"; s="${s%B}"
     if [[ "$s" == *K ]]; then echo "$s" | sed 's/K//' | awk '{printf "%.0f", $1*1024}'
@@ -123,6 +196,33 @@ if [ ! -f "$DIRSEARCH" ]; then
     [ ! -f "$DIRSEARCH" ] && die "Installation failed"
 fi
 [ ! -f "$WL" ] && die "Wordlist missing"
+
+# === AUTO-DISCOVERY ===
+TEMP_WL=$(mktemp)
+cp "$WL" "$TEMP_WL"
+ROBOT_COUNT=0
+SITEMAP_COUNT=0
+ROBOTS=$(extract_robots "$HOST")
+if [ -n "$ROBOTS" ]; then
+    while IFS= read -r rp; do
+        [ -z "$rp" ] && continue
+        echo "$rp" >> "$TEMP_WL"
+        ROBOT_COUNT=$((ROBOT_COUNT+1))
+    done <<< "$ROBOTS"
+fi
+SITEMAP=$(extract_sitemap "$HOST")
+if [ -n "$SITEMAP" ]; then
+    while IFS= read -r sp; do
+        [ -z "$sp" ] && continue
+        echo "$sp" >> "$TEMP_WL"
+        SITEMAP_COUNT=$((SITEMAP_COUNT+1))
+    done <<< "$SITEMAP"
+fi
+sort -u "$TEMP_WL" -o "$TEMP_WL"
+WL="$TEMP_WL"
+if [ "$ROBOT_COUNT" -gt 0 ] || [ "$SITEMAP_COUNT" -gt 0 ]; then
+    printf "  ${G}✔ Discovered: ${W}$ROBOT_COUNT${N} robots + ${W}$SITEMAP_COUNT${N} sitemap paths\n"
+fi
 
 # === QUICK CALIBRATION (5 paths, parallel) ===
 title "🎯 Calibration"
@@ -303,10 +403,11 @@ else
     if [ "$LF" -gt 0 ]; then
         printf "\n  ${BR}▸ 🔥 REDIRECT LEAK${N}\n"
         while IFS='|' read -r t c s p redir; do
+            cc=$(code_color "$c")
             if [ -n "${redir:-}" ]; then
-                printf "  ${BR}│${N} ${DIM_R}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
+                printf "  ${BR}│${N} ${cc}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
             else
-                printf "  ${BR}│${N} ${DIM_R}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
+                printf "  ${BR}│${N} ${cc}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
             fi
         done < "$LEAK"
     fi
@@ -322,14 +423,21 @@ else
             esac
             PREV="$sev"
         fi
-        cl=$(color_for "$sev"); dm=$(dim_color_for "$sev")
+        cl=$(color_for "$sev"); dm=$(dim_color_for "$sev"); cc=$(code_color "$c")
         if [ -n "${redir:-}" ]; then
-            printf "  ${cl}│${N} ${dm}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
+            printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
         else
-            printf "  ${cl}│${N} ${dm}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
+            printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
         fi
     done < "$ORD"
 fi
+# === EXPORT + NOTIFY ===
+JSON_FILE="scan-$HOST-$(date +%Y%m%d-%H%M%S).json"
+export_json "$JSON_FILE" "$HOST" "$ORD" "$LEAK" 2>/dev/null
+_LF=$(wc -l < "$LEAK" 2>/dev/null || echo 0)
+_FD=$(wc -l < "$ORD" 2>/dev/null || echo 0)
+send_notification "Scan Done: $HOST" "Findings: $_FD | LEAK: $_LF"
+
 echo ""; line
 CR=$(grep -c '^CRITICAL|' "$ORD" 2>/dev/null | head -1); CR=${CR:-0}
 WR=$(grep -c '^WARNING|' "$ORD" 2>/dev/null | head -1); WR=${WR:-0}
@@ -339,5 +447,6 @@ printf "  ${W}Summary:${N} ${BR}$CR${N} critical · ${BY}$WR${N} warning · ${BG
 [ "$LF" -gt 0 ] && printf " · ${BR}${LF} LEAK${N}"
 printf "\n"
 [ "$FAKE" -gt 0 ] && printf "  ${D}Filtered: ${FAKE} soft-404 responses${N}\n"
+[ -f "$JSON_FILE" ] && printf "  ${D}Report saved: ${C}$JSON_FILE${N}\n"
 echo ""
 rm -f "$FINAL" "$ORD" "$LEAK" "$RAW"
