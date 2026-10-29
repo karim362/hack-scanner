@@ -71,12 +71,23 @@ detect_redirect_leak() {
     curl -sk -o "$b" -D "$h" --max-time 15 "$url" 2>/dev/null
     local st=$(head -n1 "$h" 2>/dev/null | awk '{print $2}')
     local sz=$(wc -c < "$b" 2>/dev/null | tr -d ' ')
+    local ct=$(grep -i '^content-type:' "$h" | head -1 | awk '{print $2}' | tr -d '\r')
     local leak="no"
-    if [[ "$st" =~ ^(301|302|303|307|308)$ ]] && [ "${sz:-0}" -gt 2000 ]; then
-        leak="yes"
-    fi
-    if [[ "$st" =~ ^(301|302|303|307|308)$ ]] && [ "${sz:-0}" -gt 200 ]; then
-        grep -qiE 'password|secret|api_key|token|<form|admin|dashboard|smtp|mysql|username|email' "$b" 2>/dev/null && leak="yes"
+    if [[ "$st" =~ ^(301|302|303|307|308)$ ]] && [ "${sz:-0}" -gt 5000 ]; then
+        # Skip SPA app shells (React/Next/Vue/Angular) — huge HTML with app markers
+        local is_spa="no"
+        if echo "$ct" | grep -qi 'text/html'; then
+            if grep -qiE '<div id="(root|app|__next|__nuxt)"|window\.__NUXT__|window\.__NEXT_DATA__|<app-root|<div id=.app.' "$b" 2>/dev/null; then
+                is_spa="yes"
+            fi
+        fi
+        if [ "$is_spa" = "no" ]; then
+            if grep -qiE 'password|secret|api_key|token|<form|admin|dashboard|smtp|mysql|username|email' "$b" 2>/dev/null; then
+                if ! grep -qiE 'remember.?me|sign.?in|log.?in|forgot.?password|csrf' "$b" 2>/dev/null; then
+                    leak="yes"
+                fi
+            fi
+        fi
     fi
     echo "$st|$sz|$leak"
     rm -f "$b" "$h"
