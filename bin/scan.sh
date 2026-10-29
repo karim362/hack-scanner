@@ -420,11 +420,7 @@ else
         printf "\n  ${BR}▸ 🔥 REDIRECT LEAK${N}\n"
         while IFS='|' read -r t c s p redir; do
             cc=$(code_color "$c")
-            if [ -n "${redir:-}" ]; then
-                printf "  ${BR}│${N} ${cc}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
-            else
-                printf "  ${BR}│${N} ${cc}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
-            fi
+            printf "  ${BR}│${N} ${cc}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
         done < "$LEAK"
     fi
     PREV=""
@@ -440,11 +436,7 @@ else
             PREV="$sev"
         fi
         cl=$(color_for "$sev"); dm=$(dim_color_for "$sev"); cc=$(code_color "$c")
-        if [ -n "${redir:-}" ]; then
-            printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
-        else
-            printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
-        fi
+        printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
     done < "$ORD"
 fi
 # === EXPORT + NOTIFY ===
