@@ -198,18 +198,24 @@ RAW=$(mktemp); trap "rm -f $TMP $RAW; rm -rf $CAL_DIR" EXIT
 while IFS= read -r l; do
     [ -z "$l" ] && continue
     c=$(printf '%s' "$l" | grep -oE '\] [0-9]+ ' | head -1 | tr -d '] ')
-    p=$(printf '%s' "$l" | sed 's/.* - //' | head -1)
+    # Extract everything after last " - " (this is path + optional " -> target")
+    raw_path=$(printf '%s' "$l" | sed 's/.* - //')
+    # Clean: strip "  ->  target" suffix
+    p=$(printf '%s' "$raw_path" | sed 's/[[:space:]]*->.*$//' | sed 's/[[:space:]]*$//')
+    # Optional: extract redirect target separately
+    redir=$(printf '%s' "$raw_path" | grep -oE '->[[:space:]]*[^ ]+$' | sed 's/->[[:space:]]*//')
     rs=$(printf '%s' "$l" | grep -oE '[0-9]+(\.[0-9]+)?[KMGT]?B' | head -1)
     [ -z "$rs" ] && continue
     [ -z "$p" ] && continue
     s=$(parse_size "$rs")
-    echo "$c|$s|$p"
+    # Store: code|size|path|redirect
+    echo "$c|$s|$p|${redir:-}"
 done < "$TMP" > "$RAW"
 TOTAL_RAW=$(wc -l < "$RAW" | tr -d ' ')
 printf "  ${D}Raw responses: ${W}${TOTAL_RAW}${N}\n"
 # Cluster detection
 declare -A SIZE_BUCKETS
-while IFS='|' read -r c s p; do
+while IFS='|' read -r c s p redir; do
     [ -z "$s" ] && continue
     b=$((s / 500))
     SIZE_BUCKETS[$b]=$(( ${SIZE_BUCKETS[$b]:-0} + 1 ))
@@ -239,7 +245,7 @@ if [ "$RANGE_LOW" -gt 0 ]; then
 fi
 # Filter
 FINAL=$(mktemp); FAKE=0; REAL=0
-while IFS='|' read -r c s p; do
+while IFS='|' read -r c s p redir; do
     [ -z "$p" ] && continue
     # Skip tiny 200s
     if [ "$c" = "200" ] && [ "$s" -lt 100 ] 2>/dev/null; then FAKE=$((FAKE+1)); continue; fi
@@ -249,7 +255,7 @@ while IFS='|' read -r c s p; do
         FAKE=$((FAKE+1)); continue
     fi
     sev=$(classify_severity "$p" "$c" "$s")
-    echo "$sev|$c|$s|$p" >> "$FINAL"
+    echo "$sev|$c|$s|$p|${redir:-}" >> "$FINAL"
     REAL=$((REAL+1))
 done < "$RAW"
 [ "$FAKE" -gt 0 ] && printf "  ${Y}✔ Filtered ${FAKE} soft-404s (${REAL} remain)${N}\n"
@@ -259,10 +265,10 @@ if [ -n "$CRIT_LIST" ]; then
     printf "  ${C}ℹ Validating critical files...${N}\n"
     VALIDATED=$(mktemp)
     printf '%s\n' "$CRIT_LIST" > "$VALIDATED.in"
-    while IFS='|' read -r sev c s p; do
+    while IFS='|' read -r sev c s p redir; do
         [ -z "$p" ] && continue
         r=$(validate_file "$p")
-        [ "$r" = "yes" ] && echo "$sev|$c|$s|$p" >> "$VALIDATED"
+        [ "$r" = "yes" ] && echo "$sev|$c|$s|$p|${redir:-}" >> "$VALIDATED"
     done < "$VALIDATED.in"
     NON_CRIT=$(grep -v '^CRITICAL|' "$FINAL" 2>/dev/null)
     { cat "$VALIDATED"; [ -n "$NON_CRIT" ] && echo "$NON_CRIT"; } > "$FINAL.new"
@@ -274,7 +280,7 @@ fi
 ORD=$(mktemp)
 awk -F'|' '{r=4; if($1=="CRITICAL")r=1; else if($1=="WARNING")r=2; else if($1=="INFO")r=3; print r"|"$0}' "$FINAL" | sort -t'|' -k1,1n | cut -d'|' -f2- > "$ORD"
 LEAK=$(mktemp)
-while IFS='|' read -r sev c s p; do
+while IFS='|' read -r sev c s p redir; do
     [ -z "$p" ] && continue
     case "$c" in 301|302|307|308)
         if [ "$s" -gt 5000 ] 2>/dev/null; then
@@ -282,7 +288,7 @@ while IFS='|' read -r sev c s p; do
             f="${r##*|}"
             if [ "$f" = "yes" ]; then
                 rl_size="${r#*|}"; rl_size="${rl_size%%|*}"
-                echo "LEAK|$c|$rl_size|$p" >> "$LEAK"
+                echo "LEAK|$c|$rl_size|$p|${redir:-}" >> "$LEAK"
             fi
         fi
     ;; esac
@@ -296,12 +302,16 @@ if [ "$FOUND" -eq 0 ] && [ "$LF" -eq 0 ]; then
 else
     if [ "$LF" -gt 0 ]; then
         printf "\n  ${BR}▸ 🔥 REDIRECT LEAK${N}\n"
-        while IFS='|' read -r t c s p; do
-            printf "  ${BR}│${N} ${DIM_R}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
+        while IFS='|' read -r t c s p redir; do
+            if [ -n "${redir:-}" ]; then
+                printf "  ${BR}│${N} ${DIM_R}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
+            else
+                printf "  ${BR}│${N} ${DIM_R}[${c}]${N} ${DIM_R}${s}B${N} ${BR}→${N} ${C}https://$HOST$p${N}\n"
+            fi
         done < "$LEAK"
     fi
     PREV=""
-    while IFS='|' read -r sev c s p; do
+    while IFS='|' read -r sev c s p redir; do
         [ -z "$sev" ] && continue
         if [ "$sev" != "$PREV" ]; then
             case "$sev" in
@@ -313,7 +323,11 @@ else
             PREV="$sev"
         fi
         cl=$(color_for "$sev"); dm=$(dim_color_for "$sev")
-        printf "  ${cl}│${N} ${dm}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
+        if [ -n "${redir:-}" ]; then
+            printf "  ${cl}│${N} ${dm}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N} ${D}↳ ${redir}${N}\n"
+        else
+            printf "  ${cl}│${N} ${dm}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
+        fi
     done < "$ORD"
 fi
 echo ""; line
