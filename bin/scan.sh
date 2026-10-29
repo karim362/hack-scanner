@@ -274,22 +274,34 @@ fi
 $PYTHON "$DIRSEARCH" -u "$TARGET" -w "$WL" -t "$THREADS" --timeout 7 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1 &
 PID=$!
 START=$(date +%s)
+SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 LAST_PCT=-1
+i=0
+FOUND_LIVE=0
+PCT=""
 while kill -0 $PID 2>/dev/null; do
-    p=$(grep -oE '[0-9]+%' "$TMP" 2>/dev/null | tail -1 | tr -d '%')
-    [ -z "$p" ] && p=0
     ELAPSED=$(( $(date +%s) - START ))
-    if [ "$p" -ne "$LAST_PCT" ]; then
-        render_bar "$p" "$ELAPSED"
-        LAST_PCT=$p
-    else
-        printf "\r  ${C}[████████████░░░░░░░░]${N} ${W}%3d%%${N} ${D}%ds${N}   " "$p" "$ELAPSED"
+    if [ $((i % 5)) -eq 0 ]; then
+        FOUND_LIVE=$(grep -cE '\] (200|301|302|307|308) ' "$TMP" 2>/dev/null)
+        [ -z "$FOUND_LIVE" ] && FOUND_LIVE=0
+        PCT=$(grep -oE '[0-9]{1,3}%' "$TMP" 2>/dev/null | tail -1 | tr -d '%')
     fi
-    sleep 0.4
+    if [ -n "$PCT" ] && [ "$PCT" -ge 0 ] 2>/dev/null; then
+        if [ "$PCT" -ne "$LAST_PCT" ]; then
+            render_bar "$PCT" "$ELAPSED"
+            LAST_PCT=$PCT
+        fi
+    else
+        printf "\r  ${C}${SPIN[$((i % 10))]}${N} ${W}%3ds${N} ${D}|${N} ${C}%d${N} ${D}found${N}   " "$ELAPSED" "$FOUND_LIVE"
+    fi
+    sleep 0.3
+    i=$((i+1))
 done
 wait $PID 2>/dev/null
 ELAPSED=$(( $(date +%s) - START ))
-printf "\r  ${G}[████████████████████]${N} ${W}100%%${N} ${D}%ds${N} ✓        \n" "$ELAPSED"
+FINAL_FOUND=$(grep -cE '\] (200|301|302|307|308) ' "$TMP" 2>/dev/null)
+[ -z "$FINAL_FOUND" ] && FINAL_FOUND=0
+printf "\r  ${G}✔${N} ${W}%3ds${N} ${D}|${N} ${G}%d${N} ${D}found${N}                          \n" "$ELAPSED" "$FINAL_FOUND"
 
 # === SMART ANALYSIS ===
 title "🔬 Analyzing"
@@ -303,7 +315,7 @@ while IFS= read -r l; do
     # Clean: strip "  ->  target" suffix
     p=$(printf '%s' "$raw_path" | sed 's/[[:space:]]*->.*$//' | sed 's/[[:space:]]*$//')
     # Optional: extract redirect target separately
-    redir=$(printf '%s' "$raw_path" | grep -oE '->[[:space:]]*[^ ]+$' | sed 's/->[[:space:]]*//')
+    redir=$(printf '%s' "$raw_path" | sed -n 's/.*->[[:space:]]*//p' | head -1 | tr -d '\r\n')
     rs=$(printf '%s' "$l" | grep -oE '[0-9]+(\.[0-9]+)?[KMGT]?B' | head -1)
     [ -z "$rs" ] && continue
     [ -z "$p" ] && continue
