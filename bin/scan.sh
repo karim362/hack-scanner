@@ -76,6 +76,8 @@ validate_content() {
     # Universal soft-404 markers
     if grep -qiE '<title>[^<]*(404|not[[:space:]]+found|error|access[[:space:]]+denied|forbidden)[^<]*</title>' "$tmp" 2>/dev/null; then
         verdict="FAKE"
+    elif grep -qiE 'wp-die|<body[^>]*class="[^"]*error404|page[[:space:]]+not[[:space:]]+found|nothing[[:space:]]+found|<h1[^>]*>Oops' "$tmp" 2>/dev/null; then
+        verdict="FAKE"
     elif grep -qiE '<h1[^>]*>[^<]*(404|not[[:space:]]+found|page[[:space:]]+not[[:space:]]+found)[^<]*</h1>' "$tmp" 2>/dev/null; then
         verdict="FAKE"
     fi
@@ -107,6 +109,8 @@ validate_content() {
             *.php)
                 if grep -q '<?php' "$tmp" 2>/dev/null; then
                     verdict="REAL"
+                else
+                    verdict="FAKE"
                 fi
                 ;;
             *.zip|*.tar|*.tgz|*.rar|*.7z|*.gz|*.bz2)
@@ -303,8 +307,18 @@ else
     done <<< "$RAW"
 fi
 LEAK=$(mktemp); trap "rm -f $TMP $RES $LEAK" EXIT
+# حساب نطاق WC_PRE للفلترة
+WC_LOW=0; WC_HIGH=0
+if [ -n "$WC_PRE" ] && [ "$WC_PRE" -gt 100 ] 2>/dev/null; then
+    WC_LOW=$((WC_PRE - 500))
+    WC_HIGH=$((WC_PRE + 500))
+fi
 while IFS='|' read -r sev c s p; do
     [ -z "$p" ] && continue
+    # فلترة Soft-404: أي حجم داخل ±500B من baseline = FAKE
+    if [ "$WC_LOW" -gt 0 ] && [ "$s" -ge "$WC_LOW" ] && [ "$s" -le "$WC_HIGH" ] 2>/dev/null; then
+        continue
+    fi
     case "$c" in 301|302|307|308)
         r=$(detect_redirect_leak "https://$HOST$p")
         f="${r##*|}"
