@@ -2,8 +2,8 @@
 set -o pipefail
 HACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$HACK_DIR/tools"
-WL="$HACK_DIR/wordlists/critical.txt"
-[ -f "$WL" ] || WL="$HACK_DIR/wordlists/top2000.txt"
+WL="$HACK_DIR/wordlists/ultra500.txt"
+[ -f "$WL" ] || WL="$HACK_DIR/wordlists/ultra500.txt"
 DIRSEARCH="$TOOLS/dirsearch/dirsearch.py"
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[0;33m'; C='\033[0;36m'; M='\033[0;35m'
 W='\033[1;37m'; D='\033[0;90m'; N='\033[0m'
@@ -171,7 +171,7 @@ if [ -x ".venv/bin/python3" ]; then
 else
     PYTHON="python3"
 fi
-$PYTHON "$DIRSEARCH" -u "$TARGET" -w "$WL" -t "$THREADS" --timeout 3 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1 &
+$PYTHON "$DIRSEARCH" -u "$TARGET" -w "$WL" -t "$THREADS" --timeout 7 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1 &
 PID=$!
 START=$(date +%s)
 LAST_PCT=-1
@@ -220,27 +220,32 @@ for b in "${!SIZE_BUCKETS[@]}"; do
         MAX_COUNT=${SIZE_BUCKETS[$b]}; MAX_BUCKET=$b
     fi
 done
-# Use calibration range if stronger
-CAL_RANGE_BUCKETS=0
+# === FAKE BUCKETS: any size bucket with 5+ responses ===
+declare -A FAKE_BUCKETS
+for b in "${!SIZE_BUCKETS[@]}"; do
+    cnt="${SIZE_BUCKETS[$b]}"
+    if [ "$cnt" -ge 5 ]; then
+        FAKE_BUCKETS[$b]=1
+        lo=$((b * 500)); hi=$((b * 500 + 499))
+        printf "  ${Y}⚠ Soft-404 cluster: ${W}${lo}-${hi}B${N} (${cnt} responses)\n"
+    fi
+done
+# Also mark calibration range buckets
 if [ "$RANGE_LOW" -gt 0 ]; then
-    CAL_RANGE_BUCKETS=$((RANGE_HIGH / 500 - RANGE_LOW / 500 + 1))
+    for b in $(seq $((RANGE_LOW / 500)) $((RANGE_HIGH / 500))); do
+        FAKE_BUCKETS[$b]=1
+    done
+    printf "  ${Y}⚠ Calibration range: ${W}${RANGE_LOW}-${RANGE_HIGH}B${N}\n"
 fi
-CLUSTER_LOW=$((MAX_BUCKET * 500)); CLUSTER_HIGH=$((MAX_BUCKET * 500 + 499))
-USE_CLUSTER=0
-if [ "$MAX_COUNT" -ge 5 ]; then USE_CLUSTER=1; fi
-[ "$USE_CLUSTER" = "1" ] && printf "  ${Y}⚠ Cluster: ${W}${CLUSTER_LOW}-${CLUSTER_HIGH}B${N} (${MAX_COUNT} responses)\n"
 # Filter
 FINAL=$(mktemp); FAKE=0; REAL=0
 while IFS='|' read -r c s p; do
     [ -z "$p" ] && continue
-    # Skip tiny
+    # Skip tiny 200s
     if [ "$c" = "200" ] && [ "$s" -lt 100 ] 2>/dev/null; then FAKE=$((FAKE+1)); continue; fi
-    # Skip cluster bucket
-    if [ "$USE_CLUSTER" = "1" ] && [ "$s" -ge "$CLUSTER_LOW" ] 2>/dev/null && [ "$s" -le "$CLUSTER_HIGH" ] 2>/dev/null; then
-        FAKE=$((FAKE+1)); continue
-    fi
-    # Skip calibration range
-    if [ "$RANGE_LOW" -gt 0 ] && [ "$s" -ge "$RANGE_LOW" ] 2>/dev/null && [ "$s" -le "$RANGE_HIGH" ] 2>/dev/null; then
+    # Skip fake bucket
+    b=$((s / 500))
+    if [ -n "${FAKE_BUCKETS[$b]:-}" ]; then
         FAKE=$((FAKE+1)); continue
     fi
     sev=$(classify_severity "$p" "$c" "$s")
