@@ -202,6 +202,22 @@ fi
 title "🎯 Reconnaissance"
 printf "  ${D}Scanning wildcard...${N}\n"
 WC_PRE=$(smart_wildcard_detect "$HOST")
+# بصمات ذكية لكشف Soft-404 بدقة
+declare -A BASELINE_HASHES
+declare -a BASELINE_SIZES=()
+for _i in 1 2 3 4 5 6 7; do
+    _res=$(curl -sk --max-time 6 "https://$HOST/nx-$RANDOM-$_i-$RANDOM" 2>/dev/null)
+    _h=$(printf '%s' "$_res" | sha256sum | cut -d' ' -f1)
+    _sz=$(printf '%s' "$_res" | wc -c | tr -d ' ')
+    [ -n "$_h" ] && BASELINE_HASHES[$_h]=1
+    [ "$_sz" -gt 100 ] 2>/dev/null && BASELINE_SIZES+=("$_sz")
+done
+_home=$(curl -sk --max-time 6 "https://$HOST/" 2>/dev/null)
+_home_h=$(printf '%s' "$_home" | sha256sum | cut -d' ' -f1)
+_home_sz=$(printf '%s' "$_home" | wc -c | tr -d ' ')
+[ -n "$_home_h" ] && BASELINE_HASHES[$_home_h]=1
+[ "$_home_sz" -gt 100 ] 2>/dev/null && BASELINE_SIZES+=("$_home_sz")
+echo "  ${D}Baseline: ${#BASELINE_HASHES[@]} hashes | homepage ${_home_sz}B${N}"
 if [ -n "$WC_PRE" ]; then
     printf "  ${Y}⚠${N} ${W}Wildcard:${N} ${Y}${WC_PRE}B${N} ${D}(auto-filtered)${N}\n"
 else
@@ -307,18 +323,8 @@ else
     done <<< "$RAW"
 fi
 LEAK=$(mktemp); trap "rm -f $TMP $RES $LEAK" EXIT
-# حساب نطاق WC_PRE للفلترة
-WC_LOW=0; WC_HIGH=0
-if [ -n "$WC_PRE" ] && [ "$WC_PRE" -gt 100 ] 2>/dev/null; then
-    WC_LOW=$((WC_PRE - 500))
-    WC_HIGH=$((WC_PRE + 500))
-fi
 while IFS='|' read -r sev c s p; do
     [ -z "$p" ] && continue
-    # فلترة Soft-404: أي حجم داخل ±500B من baseline = FAKE
-    if [ "$WC_LOW" -gt 0 ] && [ "$s" -ge "$WC_LOW" ] && [ "$s" -le "$WC_HIGH" ] 2>/dev/null; then
-        continue
-    fi
     case "$c" in 301|302|307|308)
         r=$(detect_redirect_leak "https://$HOST$p")
         f="${r##*|}"
@@ -328,6 +334,53 @@ while IFS='|' read -r sev c s p; do
         fi
     ;; esac
 done < "$RES"
+
+# === تحقق المحتوى: كشف Soft-404 بدقة ===
+VALIDATED=$(mktemp)
+V_FAKE=0
+while IFS='|' read -r sev c s p; do
+    [ -z "$p" ] && continue
+    if [ "$c" = "200" ] && [[ "$sev" =~ ^(CRITICAL|WARNING)$ ]]; then
+        _tmp=$(mktemp); _hdr=$(mktemp)
+        curl -sk -o "$_tmp" -D "$_hdr" --max-time 10 "https://$HOST$p" 2>/dev/null
+        _h=$(sha256sum "$_tmp" 2>/dev/null | cut -d' ' -f1)
+        _ctype=$(grep -i '^content-type:' "$_hdr" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '\r')
+        _base=$(basename "$p")
+        _real="yes"
+        # (أ) تطابق بصمة SHA256 مع baseline
+        [ -n "$_h" ] && [ -n "${BASELINE_HASHES[$_h]}" ] && _real="no"
+        # (ب) حجم قريب من الرئيسية + HTML
+        if [ "$_real" = "yes" ] && echo "$_ctype" | grep -qi 'text/html'; then
+            for _bs in "${BASELINE_SIZES[@]}"; do
+                if [ "$s" -ge $((_bs-500)) ] 2>/dev/null && [ "$s" -le $((_bs+500)) ] 2>/dev/null; then
+                    _real="no"; break
+                fi
+            done
+        fi
+        # (ج) تحقق حسب الامتداد
+        if [ "$_real" = "yes" ]; then
+            case "$_base" in
+                .env|.env.*|*.env) grep -qE '^[A-Z][A-Z0-9_]+=' "$_tmp" 2>/dev/null || _real="no" ;;
+                .git/config) grep -qE '^\[(core|remote|user|branch)' "$_tmp" 2>/dev/null || _real="no" ;;
+                *.sql|*.sql.*|*.dump|*.db|*.db.sql) grep -qiE 'CREATE TABLE|INSERT INTO|DROP TABLE|-- MySQL|-- PostgreSQL' "$_tmp" 2>/dev/null || _real="no" ;;
+                *.pem|*.key|*.crt|*.csr) grep -qE 'BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY|BEGIN CERTIFICATE' "$_tmp" 2>/dev/null || _real="no" ;;
+                *.php.bak|*.php.txt|*.php.swp|*.php.save|*.php.old|*.php.orig|*.php~) grep -q '<?php' "$_tmp" 2>/dev/null || _real="no" ;;
+                *.zip|*.tar|*.tar.*|*.tgz|*.rar|*.7z|*.gz|*.bz2) echo "$_ctype" | grep -qi 'text/html' && _real="no" ;;
+                *.conf|*.cfg|*.ini|*.yml|*.yaml|*.log|*.bak|*.old|*.swp|*.xml|*.json|*.txt) echo "$_ctype" | grep -qi 'text/html' && _real="no" ;;
+            esac
+        fi
+        # (د) علامات Soft-404
+        if [ "$_real" = "yes" ]; then
+            grep -qiE '<title>[^<]*(404|not[[:space:]]+found|forbidden|access[[:space:]]+denied)[^<]*</title>|<h1[^>]*>[^<]*(404|not[[:space:]]+found)[^<]*</h1>' "$_tmp" 2>/dev/null && _real="no"
+        fi
+        rm -f "$_tmp" "$_hdr"
+        if [ "$_real" = "no" ]; then V_FAKE=$((V_FAKE+1)); continue; fi
+    fi
+    echo "$sev|$c|$s|$p" >> "$VALIDATED"
+done < "$RES"
+mv "$VALIDATED" "$RES"
+[ "$V_FAKE" -gt 0 ] && echo "  ${Y}✔ Filtered $V_FAKE soft-404s (content mismatch)${N}"
+
 ORD=$(mktemp); trap "rm -f $TMP $RES $LEAK $ORD" EXIT
 awk -F'|' '{r=4; if($1=="CRITICAL")r=1; else if($1=="WARNING")r=2; else if($1=="INFO")r=3; print r"|"$0}' "$RES" | sort -t'|' -k1,1n | cut -d'|' -f2- > "$ORD"
 FOUND=$(awk -F"|" '$2!="301" && $2!="302" && $2!="307" && $2!="308"' "$ORD" | wc -l); LF=$(wc -l < "$LEAK" 2>/dev/null | head -1); LF=${LF:-0}
