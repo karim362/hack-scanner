@@ -31,6 +31,21 @@ install_dirsearch() {
     echo "  → Installing dirsearch..."
     git clone --depth 1 https://github.com/maurosoria/dirsearch.git "$TOOLS/dirsearch" 2>/dev/null
     cd "$TOOLS/dirsearch" || return
+
+    # Termux: cryptography لازم تيجي من pkg (مش pip)
+    if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+        echo "  -> Termux detected, using pkg cryptography + system-site venv"
+        pkg install -y python-cryptography 2>/dev/null
+        rm -rf .venv
+        python3 -m venv --system-site-packages .venv 2>/dev/null
+        for p in PySocks==1.7.1 Jinja2==3.1.6 requests==2.33.1 requests-ntlm==1.3.0 colorama==0.4.6 beautifulsoup4==4.14.3 defusedcsv==3.0.0 defusedxml==0.7.1 requests-toolbelt==1.0.0 httpx==0.28.1 socksio==1.0.0 httpx-ntlm==1.4.0; do
+            .venv/bin/pip install -q "$p" 2>/dev/null
+        done
+        .venv/bin/pip install -q --no-deps pyopenssl==26.1.0 2>/dev/null
+        echo "  ok dirsearch deps (termux)"
+        return
+    fi
+
     if pip3 install -q -r requirements.txt 2>/dev/null; then
         return
     fi
