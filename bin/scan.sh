@@ -35,6 +35,9 @@ for t in "${TARGETS[@]}"; do
     scan_target "$t"
 done
 
+# ═══ توليد تقرير HTML ونقله لذاكرة Android ═══
+generate_html_report
+
 echo ""
 printf "  ${BM}${W}════════════════════════════════════════════${N}\n"
 printf "  ${G}✓ All scans completed successfully.${N}\n"

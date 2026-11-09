@@ -1,3 +1,131 @@
+# ═══════════════════════════════════════════════════════════
+# المتغيرات العالمية لجمع النتائج (للتقرير)
+# ═══════════════════════════════════════════════════════════
+GLOBAL_HTML_ROWS=()
+GLOBAL_TARGETS_COUNT=0
+
+# ═══════════════════════════════════════════════════════════
+# generate_html_report: توليد تقرير HTML ونقله لذاكرة Android
+# ═══════════════════════════════════════════════════════════
+generate_html_report() {
+    local ts=$(date +%Y%m%d-%H%M%S)
+    local human_ts=$(date '+%Y-%m-%d %H:%M:%S')
+    local total=${#GLOBAL_HTML_ROWS[@]}
+    local targets=${GLOBAL_TARGETS_COUNT:-0}
+    local tmp_html=$(mktemp --suffix=.html 2>/dev/null || mktemp)
+    local dest_dir="$HOME/storage/shared/hack-scanner"
+
+    # إنشاء المجلد في الذاكرة الداخلية
+    if ! mkdir -p "$dest_dir" 2>/dev/null; then
+        printf "  ${R}✖ فشل إنشاء مجلد الذاكرة: $dest_dir${N}\n"
+        printf "  ${Y}⚠ شغّل: termux-setup-storage${N}\n"
+        rm -f "$tmp_html"
+        return 1
+    fi
+
+    # إحصائيات
+    local cnt_crit=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|CRITICAL|' || true)
+    local cnt_warn=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|WARNING|' || true)
+    local cnt_info=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|INFO|' || true)
+    local cnt_low=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|LOW|' || true)
+
+    # كتابة رأس HTML
+    cat > "$tmp_html" << 'HTMLEOF'
+<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hack Scanner Report</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+  h1 { color: #58a6ff; border-bottom: 2px solid #58a6ff; padding-bottom: 10px; }
+  .meta { background: #161b22; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #58a6ff; }
+  .meta p { margin: 5px 0; }
+  .stats { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat { padding: 15px 25px; border-radius: 6px; font-weight: bold; font-size: 18px; }
+  .stat.crit { background: #da3633; color: #fff; }
+  .stat.warn { background: #d29922; color: #fff; }
+  .stat.info { background: #1f6feb; color: #fff; }
+  .stat.low  { background: #30363d; color: #c9d1d9; }
+  .stat small { display: block; font-size: 11px; font-weight: normal; opacity: 0.85; }
+  table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 6px; overflow: hidden; }
+  th { background: #21262d; color: #58a6ff; padding: 12px; text-align: left; border-bottom: 2px solid #30363d; }
+  td { padding: 10px 12px; border-bottom: 1px solid #21262d; word-break: break-all; }
+  tr.CRITICAL { background: rgba(218,54,51,0.15); }
+  tr.WARNING  { background: rgba(210,153,34,0.15); }
+  tr.INFO     { background: rgba(31,111,235,0.12); }
+  tr.LOW      { background: rgba(48,54,61,0.4); }
+  tr:hover { background: #1f2428; }
+  .sev { font-weight: bold; padding: 3px 8px; border-radius: 3px; display: inline-block; font-size: 12px; }
+  .sev.CRITICAL { background: #da3633; color: #fff; }
+  .sev.WARNING  { background: #d29922; color: #fff; }
+  .sev.INFO     { background: #1f6feb; color: #fff; }
+  .sev.LOW      { background: #30363d; color: #c9d1d9; }
+  .host-header { background: #0d419d; color: #fff; padding: 12px; font-weight: bold; font-size: 15px; margin-top: 20px; border-radius: 6px 6px 0 0; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .footer { text-align: center; margin-top: 30px; color: #8b949e; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>🛡️ Hack Scanner Report</h1>
+HTMLEOF
+
+    # إحصائيات + meta
+    cat >> "$tmp_html" << HTMLEOF
+<div class="meta">
+  <p><strong>Date:</strong> ${human_ts}</p>
+  <p><strong>Targets scanned:</strong> ${targets}</p>
+  <p><strong>Total findings:</strong> ${total}</p>
+</div>
+<div class="stats">
+  <div class="stat crit">${cnt_crit:-0}<small>CRITICAL</small></div>
+  <div class="stat warn">${cnt_warn:-0}<small>WARNING</small></div>
+  <div class="stat info">${cnt_info:-0}<small>INFO</small></div>
+  <div class="stat low">${cnt_low:-0}<small>LOW</small></div>
+</div>
+HTMLEOF
+
+    # جدول النتائج — مجمّع حسب الهدف
+    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
+
+    local current_host=""
+    for row in "${GLOBAL_HTML_ROWS[@]}"; do
+        IFS='|' read -r h sev c sz path <<< "$row"
+        if [ "$h" != "$current_host" ]; then
+            [ -n "$current_host" ] && echo '</tbody></table>' >> "$tmp_html"
+            echo "<div class='host-header'>🎯 https://${h}</div><table><thead><tr><th style='width:100px'>Severity</th><th style='width:70px'>Code</th><th style='width:100px'>Size</th><th>URL</th></tr></thead><tbody>" >> "$tmp_html"
+            current_host="$h"
+        fi
+        printf "<tr class='%s'><td><span class='sev %s'>%s</span></td><td>[%s]</td><td>%sB</td><td><a href='https://%s%s' target='_blank'>https://%s%s</a></td></tr>\n"             "$sev" "$sev" "$sev" "$c" "$sz" "$h" "$path" "$h" "$path" >> "$tmp_html"
+    done
+    [ -n "$current_host" ] && echo '</tbody></table>' >> "$tmp_html"
+
+    # ذيل
+    cat >> "$tmp_html" << 'HTMLEOF'
+<div class="footer">
+  Generated by <strong>Hack Scanner v25.2</strong> — <a href="https://github.com/karim362/hack-scanner" target="_blank">github.com/karim362/hack-scanner</a>
+</div>
+</body>
+</html>
+HTMLEOF
+
+    # نقل (move) إلى الذاكرة الداخلية — بدون نسخة في Termux
+    local dest_file="$dest_dir/report-${ts}.html"
+    if mv "$tmp_html" "$dest_file"; then
+        printf "\n  ${BG}${W}📄 HTML Report saved:${N}\n"
+        printf "  ${C}   $dest_file${N}\n"
+        printf "  ${D}   (also visible in Android Files app: Internal Storage/hack-scanner/)${N}\n\n"
+        return 0
+    else
+        printf "  ${R}✖ فشل نقل التقرير: $dest_file${N}\n"
+        rm -f "$tmp_html"
+        return 1
+    fi
+}
+
 scan_target() {
     local RAW="$1"
     HOST="$(sanitize_url "$RAW")"
@@ -153,6 +281,7 @@ scan_target() {
                 SUSPECT=" ${Y}(⚠ truncated/1MB+ — large page or wildcard)${N}"
             fi
             printf "  ${cl}│${N} ${cc}[${c}]${N} ${s}B${SUSPECT} → ${C}https://$HOST$p${N}\n"
+            GLOBAL_HTML_ROWS+=("${HOST}|${sev}|${c}|${s}|${p}")
         done < "$FINAL_OUT"
 
         # عرض رسائل wildcard/catch-all
@@ -176,6 +305,7 @@ scan_target() {
         rm -f "$SORTED_OUT" "$FINAL_OUT"
     fi
 
+    GLOBAL_TARGETS_COUNT=$((GLOBAL_TARGETS_COUNT + 1))
     rm -f "$TEMP_WL" "$TMP" "$RAW_OUT"
     printf "\n  ${G}✓ Finished scanning: $HOST${N}\n"
 }
