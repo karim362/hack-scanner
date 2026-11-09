@@ -8,6 +8,19 @@ source "$(dirname "$0")/../lib/scan.sh"
 
 # === MAIN ===
 banner
+
+# تحذير قانوني + كلمة سر التشفير
+printf "\n  ${BR}⚠ LEGAL WARNING:${N}\n"
+printf "  ${Y}This tool detects data leaks. Use ONLY on systems you own or have written permission to test.\n"
+printf "  ${Y}PII found will be saved ENCRYPTED in ~/storage/shared/hack-scanner/leaks/\n"
+printf "  ${Y}Set LEAK_GPG_PASS env var to encrypt PII (recommended):${N}\n"
+printf "  ${D}  export LEAK_GPG_PASS='your-strong-password'${N}\n\n"
+
+if [ -z "${LEAK_GPG_PASS:-}" ]; then
+    printf "  ${Y}⚠ LEAK_GPG_PASS not set — PII will NOT be saved (safe mode).${N}\n"
+    printf "  ${D}  To enable encrypted PII saving: export LEAK_GPG_PASS='strong-pass'${N}\n\n"
+fi
+
 declare -a TARGETS=()
 
 if [ -n "${1:-}" ]; then

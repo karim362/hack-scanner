@@ -3,6 +3,7 @@
 # ═══════════════════════════════════════════════════════════
 GLOBAL_HTML_ROWS=()
 GLOBAL_TARGETS_COUNT=0
+[ -f "$(dirname "${BASH_SOURCE[0]}")/extract.sh" ] && source "$(dirname "${BASH_SOURCE[0]}")/extract.sh"
 
 # ═══════════════════════════════════════════════════════════
 # generate_html_report: توليد تقرير HTML ونقله لذاكرة Android
@@ -71,6 +72,9 @@ generate_html_report() {
 </head>
 <body>
 <h1>🛡️ Hack Scanner Report</h1>
+<div style="background: #3d1f00; border-left: 4px solid #d29922; padding: 12px; margin-bottom: 20px; border-radius: 6px; color: #d29922;">
+  <strong>⚠️ LEGAL NOTICE:</strong> This report may contain indicators of sensitive data (PII). Encrypted PII is stored in <code>leaks/</code> directory. Handle according to GDPR/CCPA/local laws. Delete after disclosure. Do not publish.
+</div>
 HTMLEOF
 
     # إحصائيات + meta
@@ -89,7 +93,7 @@ HTMLEOF
 HTMLEOF
 
     # جدول النتائج — مجمّع حسب الهدف
-    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
+    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th><th style="width:200px">Data</th></tr></thead><tbody>' >> "$tmp_html"
 
     local current_host=""
     for row in "${GLOBAL_HTML_ROWS[@]}"; do
@@ -142,6 +146,18 @@ scan_target() {
         [ ! -f "$DIRSEARCH" ] && die "Installation failed"
     fi
 
+    # === كشف wildcard مسبق (مسار عشوائي) ===
+    RANDOM_PATH="/$(head -c 8 /dev/urandom | base64 | tr -d '/+=' | head -c 10)"
+    WILDCARD_RESP=$(curl -sk -o /dev/null -w "%{http_code}|%{size_download}" "https://$HOST$RANDOM_PATH" --max-time 6 2>/dev/null)
+    WILDCARD_CODE="${WILDCARD_RESP%|*}"
+    WILDCARD_SIZE="${WILDCARD_RESP#*|}"
+    if [ -n "$WILDCARD_CODE" ] && [ "$WILDCARD_CODE" = "200" ] && [ "$WILDCARD_SIZE" -gt 100 ] 2>/dev/null; then
+        printf "  ${Y}⚠ Wildcard detected pre-scan: [%s] %sB (will filter)${N}\n" "$WILDCARD_CODE" "$WILDCARD_SIZE"
+    else
+        WILDCARD_CODE=""
+        WILDCARD_SIZE=""
+    fi
+
     TEMP_WL=$(mktemp)
     cp "$WL" "$TEMP_WL"
     
@@ -159,7 +175,7 @@ scan_target() {
     cd "$TOOLS/dirsearch" 2>/dev/null || exit
     if [ -x ".venv/bin/python3" ]; then PYTHON=".venv/bin/python3"; else PYTHON="python3"; fi
     
-    $PYTHON "$DIRSEARCH" -u "$TARGET" -w "$TEMP_WL" -t "$THREADS" --timeout 7 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
+    $PYTHON "$DIRSEARCH" -u "$TARGET" -w "$TEMP_WL" -t "$THREADS" --timeout 30 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
     
     cd - >/dev/null
 
@@ -281,7 +297,17 @@ scan_target() {
                 SUSPECT=" ${Y}(⚠ truncated/1MB+ — large page or wildcard)${N}"
             fi
             printf "  ${cl}│${N} ${cc}[${c}]${N} ${s}B${SUSPECT} → ${C}https://$HOST$p${N}\n"
-            GLOBAL_HTML_ROWS+=("${HOST}|${sev}|${c}|${s}|${p}")
+            # كشف Data Leak للصفحات 200 كبيرة
+            LEAK_INFO=""
+            if { [ "$c" = "200" ] || [ "$c" = "302" ] || [ "$c" = "301" ]; } && [ "$s" -gt 5000 ] 2>/dev/null; then
+                LEAK_RESP=$(detect_data_leak "https://$HOST$p" "$HOST" 60 2>/dev/null)
+                if [[ "$LEAK_RESP" == LEAK* ]]; then
+                    LEAK_TYPES=$(echo "$LEAK_RESP" | cut -d'|' -f2)
+                    LEAK_INFO=" 🔴 LEAK:${LEAK_TYPES}"
+                    [ "$sev" != "CRITICAL" ] && sev="CRITICAL"
+                fi
+            fi
+            GLOBAL_HTML_ROWS+=("${HOST}|${sev}|${c}|${s}|${p}${LEAK_INFO}")
         done < "$FINAL_OUT"
 
         # عرض رسائل wildcard/catch-all
