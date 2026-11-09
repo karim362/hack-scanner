@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -o pipefail
+
 HACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$HACK_DIR/tools"
 WL="$HACK_DIR/wordlists/ultra500.txt"
-[ -f "$WL" ] || WL="$HACK_DIR/wordlists/ultra500.txt"
 DIRSEARCH="$TOOLS/dirsearch/dirsearch.py"
+
+# ألوان
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[0;33m'; C='\033[0;36m'; M='\033[0;35m'
 W='\033[1;37m'; D='\033[0;90m'; N='\033[0m'
 BR='\033[1;31m'; BG='\033[1;32m'; BY='\033[1;33m'; BC='\033[1;36m'; BM='\033[1;35m'
 DIM_R='\033[2;31m'; DIM_C='\033[2;36m'
 HR="────────────────────────────────"
+
 line()  { printf "${D}%s${N}\n" "$HR"; }
 title() { printf "\n${M}${W}▸ %s${N}\n" "$1"; line; }
 die()   { printf "${R}  ✖ %s${N}\n" "$1"; exit 1; }
@@ -24,6 +27,7 @@ detect_waf() {
     elif echo "$hdr" | grep -qiE 'server:.*apache'; then echo "Apache (no WAF)"
     else echo "Unknown"; fi
 }
+
 detect_tech() {
     local host="$1"
     local home=$(curl -sk --max-time 6 "https://$host/" 2>/dev/null)
@@ -41,22 +45,26 @@ detect_tech() {
     elif echo "$home" | grep -qi 'drupal'; then echo "Drupal"
     else echo "Unknown"; fi
 }
+
 extract_robots() {
     curl -sk --max-time 6 "https://$1/robots.txt" 2>/dev/null \
         | grep -iE '^(Disallow|Allow):' 2>/dev/null \
         | awk '{print $2}' | grep -vE '^$|^\*$|^/$|^\*' | sed 's|/$||'
 }
+
 extract_sitemap() {
     curl -sk --max-time 8 "https://$1/sitemap.xml" 2>/dev/null \
         | grep -oE '<loc>[^<]+</loc>' 2>/dev/null \
         | sed 's|<loc>||; s|</loc>||' \
         | sed "s|^https\?://$1||" | grep -vE '^$' | head -50
 }
+
 send_notification() {
     local title="$1" content="$2"
     command -v termux-notification >/dev/null 2>&1 && termux-notification --title "$title" --content "$content" 2>/dev/null &
     command -v notify-send >/dev/null 2>&1 && notify-send "$title" "$content" 2>/dev/null &
 }
+
 export_json() {
     local file="$1" host="$2" ord_file="$3" leak_file="$4"
     {
@@ -78,13 +86,14 @@ banner() {
     echo "  ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░"
     printf "${BC}${W}"; echo ""
     echo "   ╔══════════════════════════════════════════╗"
-    echo "   ║   H A C K   S C A N N E R  v28.0         ║"
+    echo "   ║   H A C K   S C A N N E R  v28.1         ║"
     echo "   ║   ┌─ SMART AUTO SCAN ─┐                  ║"
     echo "   ║   │  ⚡ dirsearch engine ⚡ │              ║"
     echo "   ║   └──────────────────────┘               ║"
     echo "   ╚══════════════════════════════════════════╝"
     printf "${BM}"; echo "  ░▒▓█▓▒░ ░▒▓█▒░ ░▒▓█▓▒░"; printf "${N}\n\n"
 }
+
 sanitize_url() {
     local u="$1"
     u="$(printf '%s' "$u" | tr -d '\r\n\t ')"
@@ -93,6 +102,7 @@ sanitize_url() {
     u="${u%%\?*}"; u="${u%%#*}"; u="${u#http://}"; u="${u#https://}"; u="${u%%/*}"
     printf '%s' "$u"
 }
+
 classify_severity() {
     local p="$1"; local code="${2:-200}"; local size="${3:-0}"
     if [[ "$code" = "308" || "$code" = "301" ]] && [ "$size" -lt 200 ] 2>/dev/null; then echo LOW; return; fi
@@ -102,22 +112,25 @@ classify_severity() {
     echo "$p" | grep -qiE 'robots|sitemap|favicon|\.txt|\.xml|\.ico|\.png|\.jpg|\.svg|well-known|security|ads' && echo INFO && return
     echo LOW
 }
+
 color_for() { case "$1" in CRITICAL) printf "${BR}";; WARNING) printf "${BY}";; INFO) printf "${BG}";; *) printf "${BC}";; esac; }
 dim_color_for() { case "$1" in CRITICAL) printf "${DIM_R}";; *) printf "${DIM_C}";; esac; }
+
 code_color() {
     case "$1" in
-        200)      printf "\033[1;32m" ;;  # bright green
+        200)      printf "\033[1;32m" ;;
         201|204)  printf "\033[1;32m" ;;
-        301|302)  printf "\033[1;33m" ;;  # bright yellow
+        301|302)  printf "\033[1;33m" ;;
         303)      printf "\033[1;33m" ;;
-        307|308)  printf "\033[1;36m" ;;  # bright cyan
-        400|401|403|405) printf "\033[1;31m" ;;  # bright red
-        404)      printf "\033[1;37m" ;;  # bright white
+        307|308)  printf "\033[1;36m" ;;
+        400|401|403|405) printf "\033[1;31m" ;;
+        404)      printf "\033[1;37m" ;;
         429)      printf "\033[1;33m" ;;
-        500|502|503|504) printf "\033[1;35m" ;;  # bright magenta
+        500|502|503|504) printf "\033[1;35m" ;;
         *)        printf "\033[1;37m" ;;
     esac
 }
+
 parse_size() {
     local s="$1"; s="${s%B}"
     if [[ "$s" == *K ]]; then echo "$s" | sed 's/K//' | awk '{printf "%.0f", $1*1024}'
@@ -125,6 +138,7 @@ parse_size() {
     elif [[ "$s" == *G ]]; then echo "$s" | sed 's/G//' | awk '{printf "%.0f", $1*1073741824}'
     else echo "$s" | awk '{printf "%.0f", $1}'; fi
 }
+
 validate_file() {
     local path="$1"
     local url="https://$HOST$path"
@@ -147,6 +161,7 @@ validate_file() {
     rm -f "$tmp" "$hdr"
     echo "$real"
 }
+
 detect_redirect_leak() {
     local url="$1"
     local b=$(mktemp) h=$(mktemp)
@@ -167,6 +182,7 @@ detect_redirect_leak() {
     echo "$st|$sz|$leak"
     rm -f "$b" "$h"
 }
+
 render_bar() {
     local pct="$1" elapsed="$2"
     [ "$pct" -lt 0 ] && pct=0
@@ -178,6 +194,7 @@ render_bar() {
     for ((i=0; i<empty; i++)); do bar+="░"; done
     printf "\r  ${C}[%s]${N} ${W}%3d%%${N} ${D}%ds${N}   " "$bar" "$pct" "$elapsed"
 }
+
 # ============ START ============
 banner
 if [ -n "${1:-}" ]; then
@@ -188,12 +205,12 @@ else
     read -r RAW
 fi
 [ -z "$RAW" ] && die "No input."
+
 HOST="$(sanitize_url "$RAW")"
 [ -z "$HOST" ] && die "Could not parse host."
 TARGET="https://$HOST"
 printf "  ${BC}└─${N} ${D}Host:${N} ${W}$HOST${N}\n\n"
 
-# Auto-install if missing
 if [ ! -f "$DIRSEARCH" ]; then
     printf "  ${Y}⚠ Installing dirsearch...${N}\n"
     bash "$HACK_DIR/lib/bootstrap.sh"
@@ -228,7 +245,7 @@ if [ "$ROBOT_COUNT" -gt 0 ] || [ "$SITEMAP_COUNT" -gt 0 ]; then
     printf "  ${G}✔ Discovered: ${W}$ROBOT_COUNT${N} robots + ${W}$SITEMAP_COUNT${N} sitemap paths\n"
 fi
 
-# === QUICK CALIBRATION (5 paths, parallel) ===
+# === QUICK CALIBRATION ===
 title "🎯 Calibration"
 CAL_DIR=$(mktemp -d); trap "rm -rf $CAL_DIR" EXIT
 (
@@ -263,7 +280,7 @@ else
 fi
 line
 
-# === AUTO-SCAN with dirsearch (60 threads, 3s timeout) ===
+# === SCAN ===
 THREADS=60
 TOTAL=$(wc -l < "$WL" | tr -d ' ')
 printf "  ${C}ℹ Scanning ${W}${TOTAL}${N} ${C}paths @ ${W}${THREADS}${N} ${C}threads${N}\n\n"
@@ -307,42 +324,32 @@ FINAL_FOUND=$(grep -cE '\] (200|301|302|307|308) ' "$TMP" 2>/dev/null)
 [ -z "$FINAL_FOUND" ] && FINAL_FOUND=0
 printf "\r  ${G}✔${N} ${W}%3ds${N} ${D}|${N} ${G}%d${N} ${D}found${N}                          \n" "$ELAPSED" "$FINAL_FOUND"
 
-# === SMART ANALYSIS ===
+# === ANALYSIS ===
 title "🔬 Analyzing"
 RAW=$(mktemp); trap "rm -f $TMP $RAW; rm -rf $CAL_DIR" EXIT
-# Parse dirsearch: [HH:MM:SS] CODE - SIZE - /path
 while IFS= read -r l; do
     [ -z "$l" ] && continue
     c=$(printf '%s' "$l" | grep -oE '\] [0-9]+ ' | head -1 | tr -d '] ')
-    # Extract everything after last " - " (this is path + optional " -> target")
     raw_path=$(printf '%s' "$l" | sed 's/.* - //')
-    # Clean: strip "  ->  target" suffix
     p=$(printf '%s' "$raw_path" | sed 's/[[:space:]]*->.*$//' | sed 's/[[:space:]]*$//')
-    # Optional: extract redirect target separately
     redir=$(printf '%s' "$raw_path" | sed -n 's/.*->[[:space:]]*//p' | head -1 | tr -d '\r\n')
     rs=$(printf '%s' "$l" | grep -oE '[0-9]+(\.[0-9]+)?[KMGT]?B' | head -1)
     [ -z "$rs" ] && continue
     [ -z "$p" ] && continue
     s=$(parse_size "$rs")
-    # Store: code|size|path|redirect
     echo "$c|$s|$p|${redir:-}"
 done < "$TMP" > "$RAW"
+
 TOTAL_RAW=$(wc -l < "$RAW" | tr -d ' ')
 printf "  ${D}Raw responses: ${W}${TOTAL_RAW}${N}\n"
-# Cluster detection
+
 declare -A SIZE_BUCKETS
 while IFS='|' read -r c s p redir; do
     [ -z "$s" ] && continue
     b=$((s / 500))
     SIZE_BUCKETS[$b]=$(( ${SIZE_BUCKETS[$b]:-0} + 1 ))
 done < "$RAW"
-MAX_BUCKET=0; MAX_COUNT=0
-for b in "${!SIZE_BUCKETS[@]}"; do
-    if [ "${SIZE_BUCKETS[$b]}" -gt "$MAX_COUNT" ]; then
-        MAX_COUNT=${SIZE_BUCKETS[$b]}; MAX_BUCKET=$b
-    fi
-done
-# === FAKE BUCKETS: any size bucket with 5+ responses ===
+
 declare -A FAKE_BUCKETS
 for b in "${!SIZE_BUCKETS[@]}"; do
     cnt="${SIZE_BUCKETS[$b]}"
@@ -352,20 +359,18 @@ for b in "${!SIZE_BUCKETS[@]}"; do
         printf "  ${Y}⚠ Soft-404 cluster: ${W}${lo}-${hi}B${N} (${cnt} responses)\n"
     fi
 done
-# Also mark calibration range buckets
+
 if [ "$RANGE_LOW" -gt 0 ]; then
     for b in $(seq $((RANGE_LOW / 500)) $((RANGE_HIGH / 500))); do
         FAKE_BUCKETS[$b]=1
     done
     printf "  ${Y}⚠ Calibration range: ${W}${RANGE_LOW}-${RANGE_HIGH}B${N}\n"
 fi
-# Filter
+
 FINAL=$(mktemp); FAKE=0; REAL=0
 while IFS='|' read -r c s p redir; do
     [ -z "$p" ] && continue
-    # Skip tiny 200s
     if [ "$c" = "200" ] && [ "$s" -lt 100 ] 2>/dev/null; then FAKE=$((FAKE+1)); continue; fi
-    # Skip fake bucket
     b=$((s / 500))
     if [ -n "${FAKE_BUCKETS[$b]:-}" ]; then
         FAKE=$((FAKE+1)); continue
@@ -375,7 +380,7 @@ while IFS='|' read -r c s p redir; do
     REAL=$((REAL+1))
 done < "$RAW"
 [ "$FAKE" -gt 0 ] && printf "  ${Y}✔ Filtered ${FAKE} soft-404s (${REAL} remain)${N}\n"
-# Content validation for top CRITICAL (max 10)
+
 CRIT_LIST=$(grep '^CRITICAL|' "$FINAL" 2>/dev/null | head -10)
 if [ -n "$CRIT_LIST" ]; then
     printf "  ${C}ℹ Validating critical files...${N}\n"
@@ -392,9 +397,10 @@ if [ -n "$CRIT_LIST" ]; then
     rm -f "$VALIDATED" "$VALIDATED.in"
     printf "  ${G}✔ Validated${N}\n"
 fi
-# Sort by severity
+
 ORD=$(mktemp)
 awk -F'|' '{r=4; if($1=="CRITICAL")r=1; else if($1=="WARNING")r=2; else if($1=="INFO")r=3; print r"|"$0}' "$FINAL" | sort -t'|' -k1,1n | cut -d'|' -f2- > "$ORD"
+
 LEAK=$(mktemp)
 while IFS='|' read -r sev c s p redir; do
     [ -z "$p" ] && continue
@@ -409,8 +415,10 @@ while IFS='|' read -r sev c s p redir; do
         fi
     ;; esac
 done < "$ORD"
+
 FOUND=$(wc -l < "$ORD" | tr -d ' ')
 LF=$(wc -l < "$LEAK" 2>/dev/null | tr -d ' '); LF=${LF:-0}
+
 title "🎬 Findings"
 if [ "$FOUND" -eq 0 ] && [ "$LF" -eq 0 ]; then
     printf "  ${G}✔ No real findings${N}\n"
@@ -439,6 +447,7 @@ else
         printf "  ${cl}│${N} ${cc}[${c}]${N} ${dm}${s}B${N} ${cl}→${N} ${C}https://$HOST$p${N}\n"
     done < "$ORD"
 fi
+
 # === EXPORT + NOTIFY ===
 JSON_FILE="scan-$HOST-$(date +%Y%m%d-%H%M%S).json"
 export_json "$JSON_FILE" "$HOST" "$ORD" "$LEAK" 2>/dev/null
@@ -459,7 +468,7 @@ printf "\n"
 echo ""
 rm -f "$FINAL" "$ORD" "$LEAK" "$RAW"
 
-# === CONTINUOUS MODE: ask for next target ===
+# === CONTINUOUS MODE ===
 echo ""
 printf "  ${BC}┌─ NEXT${N}\n"
 printf "  ${BC}│${N} ${W}➜ New target (Enter to exit):${N} "
