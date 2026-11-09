@@ -98,7 +98,7 @@ main() {
     install_deps "$os"
     install_dirsearch
     install_godirb
-    install_ffuf "$arch" "$os"
+    install_ffuf "$os" "$arch"
     echo "✔ Bootstrap complete"
 }
 main "$@"

@@ -9,6 +9,11 @@ sanitize_url() {
     u="$(printf '%s' "$u" | sed 's/^\x1b\[[0-9;]*[a-zA-Z]//g')"
     [[ ! "$u" =~ ^https?:// ]] && u="https://$u"
     u="${u%%\?*}"; u="${u%%#*}"; u="${u#http://}"; u="${u#https://}"; u="${u%%/*}"
+    # تجاهل الأهداف غير الصالحة (نقطة، فاضي، بدون نقطة)
+    case "$u" in
+        ""|"."|".."|*..*) printf '%s' ""; return ;;
+    esac
+    [[ "$u" != *.* ]] && { printf '%s' ""; return; }
     printf '%s' "$u"
 }
 classify_severity() {
