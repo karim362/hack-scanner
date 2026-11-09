@@ -18,28 +18,31 @@ sanitize_url() {
 }
 classify_severity() {
     local p="$1"; local code="${2:-200}"; local size="${3:-0}"
-    
-    # استبعاد الملفات الفارغة
-    if [ "$size" -eq 0 ]; then echo "LOW"; return; fi
-    
-    # استبعاد التحويلات الصغيرة
-    if [[ "$code" = "308" || "$code" = "301" || "$code" = "307" ]] && [ "$size" -lt 200 ] 2>/dev/null; then echo LOW; return; fi
-    
-    # ملفات حساسة (CRITICAL)
+
+    # ملفات فارغة أو صغيرة جداً (<20B) = LOW (ردود API فارغة)
+    if [ "$size" -eq 0 ] 2>/dev/null; then echo "LOW"; return; fi
+    if [ "$size" -lt 20 ] 2>/dev/null; then
+        echo "$p" | grep -qiE 'robots|\.txt|security\.txt|ads\.txt' || { echo LOW; return; }
+    fi
+
+    # تحويلات (3xx): أي 3xx = LOW
+    if [[ "$code" =~ ^3 ]]; then echo "LOW"; return; fi
+
+    # ملفات حساسة (CRITICAL) — فقط لو 200
     if echo "$p" | grep -qiE '\.(env|git|ssh|aws|docker|kube|pem|key|ppk)|docker-compose|Dockerfile|config|settings|wp-config|backup|database|dump|\.sql|\.bak|\.swp|credentials|secret|password|adminer|phpmyadmin|pma|setup-config'; then
         echo CRITICAL; return
     fi
-    
+
     # لوحات التحكم (WARNING)
     if echo "$p" | grep -qiE 'admin|login|panel|dashboard|install|setup|api|graphql|swagger|console|manager|portal|user|account|webmail|cpanel|whm'; then
         echo WARNING; return
     fi
-    
+
     # ملفات معلوماتية (INFO)
     if echo "$p" | grep -qiE 'robots|sitemap|favicon|\.txt|\.xml|\.ico|\.png|\.jpg|\.svg|well-known|security|ads'; then
         echo INFO; return
     fi
-    
+
     echo LOW
 }
 color_for() { case "$1" in CRITICAL) printf "${BR}";; WARNING) printf "${BY}";; INFO) printf "${BG}";; *) printf "${BC}";; esac; }

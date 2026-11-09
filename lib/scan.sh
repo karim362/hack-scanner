@@ -160,11 +160,11 @@ scan_target() {
         if [ ${#WILDCARD_MSGS[@]} -gt 0 ] || [ "$TOTAL_CATCH_ALL" -gt 0 ]; then
             printf "\n  ${Y}⚠ Wildcard/catch-all skipped:${N}\n"
             for wm in "${WILDCARD_MSGS[@]}"; do
-                # wm = "code|size|count"
                 wc_code="${wm%%|*}"
                 rest="${wm#*|}"
                 wc_size="${rest%%|*}"
                 wc_cnt="${rest#*|}"
+                [[ "$wc_size" != *B ]] && wc_size="${wc_size}B"
                 printf "  ${Y}  • [%s] %s × %s paths (same response)${N}\n" "$wc_code" "$wc_size" "$wc_cnt"
             done
             [ "$CATCH_ALL_301" -gt 0 ] && printf "  ${Y}  • [301] catch-all redirects: %s paths total${N}\n" "$CATCH_ALL_301"
