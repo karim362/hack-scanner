@@ -51,10 +51,17 @@ scan_ports() {
     fi
     [ -d "$tmpd" ] || { printf "  ✖ Cannot create temp dir\n"; return; }
 
+    # توازي محدود: 10 عمليات (منع OOM على أندرويد)
+    local running=0 max_parallel=10
     for port in $ports_list; do
         (
-            timeout 2 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null && echo "$port" > "$tmpd/$port"
+            timeout 1 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null && echo "$port" > "$tmpd/$port"
         ) &
+        running=$((running + 1))
+        if [ "$running" -ge "$max_parallel" ]; then
+            wait -n 2>/dev/null || wait
+            running=$((running - 1))
+        fi
     done
     wait
 
