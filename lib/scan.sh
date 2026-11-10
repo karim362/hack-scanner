@@ -165,7 +165,16 @@ HTMLEOF
 PORTSEOF
         for prow in "${GLOBAL_PORT_ROWS[@]}"; do
             IFS='|' read -r ph psev pport psvc <<< "$prow"
-            printf "<tr class='%s'><td><span class='sev %s'>%s</span></td><td><strong>%s</strong></td><td>%s</td><td>%s</td></tr>\n" "$psev" "$psev" "$psev" "$pport" "$psvc" "$ph" >> "$tmp_html"
+            plink=""
+            case "$pport" in
+                80)  plink="http://$ph/" ;;
+                443) plink="https://$ph/" ;;
+                8080|8000|8081|8888|9090|3000|5000) plink="http://$ph:$pport/" ;;
+                8443|4443) plink="https://$ph:$pport/" ;;
+                *) plink="http://$ph:$pport/" ;;
+            esac
+            port_cell="<a href='$plink' target='_blank' class='port-link'>$pport</a>"
+            printf "<tr class='%s'><td><span class='sev %s'>%s</span></td><td><strong>%s</strong></td><td>%s</td><td>%s</td></tr>\n" "$psev" "$psev" "$psev" "$port_cell" "$psvc" "$ph" >> "$tmp_html"
         done
         echo '</tbody></table>' >> "$tmp_html"
     fi
