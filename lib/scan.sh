@@ -206,7 +206,7 @@ scan_target() {
     cd - >/dev/null
 
     # === curl مباشر لمسارات مهمة (يتجاوز dirsearch wildcard) ===
-    PRIORITY_PATHS="admin/login admin admin/login.php login login.php admin.php .env .git/config config.php wp-config.php admin/config admin/panel profile"
+    PRIORITY_PATHS="admin/login admin admin/login.php login login.php admin.php .env .env.local .git/config .git/HEAD config.php wp-config.php admin/config admin/panel profile docker-compose.yml docker-compose.yaml Dockerfile .htaccess backup.sql database.sql server-status phpinfo.php info.php .DS_Store"
     PRIORITY_OUT=$(mktemp -t prio.XXXXXX)
     for ppath in $PRIORITY_PATHS; do
         presp=$(curl -sk -o /dev/null -w "%{http_code}|%{size_download}" "https://$HOST/$ppath" --max-time 10 -A "Mozilla/5.0" 2>/dev/null)
