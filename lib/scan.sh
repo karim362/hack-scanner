@@ -175,7 +175,11 @@ scan_target() {
     cd "$TOOLS/dirsearch" 2>/dev/null || exit
     if [ -x ".venv/bin/python3" ]; then PYTHON=".venv/bin/python3"; else PYTHON="python3"; fi
     
-    $PYTHON "$DIRSEARCH" -u "$TARGET" -w "$TEMP_WL" -t "$THREADS" --timeout 30 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 > "$TMP" 2>&1
+    DIRSEARCH_EXTRA=""
+[ -n "$CUSTOM_HEADER" ] && DIRSEARCH_EXTRA+=" -H \"$CUSTOM_HEADER\""
+[ -n "$CUSTOM_COOKIE" ] && DIRSEARCH_EXTRA+=" -H \"Cookie: $CUSTOM_COOKIE\""
+[ -n "$CUSTOM_PROXY" ] && DIRSEARCH_EXTRA+=" --proxy \"$CUSTOM_PROXY\""
+eval $PYTHON \"$DIRSEARCH\" -u \"$TARGET\" -w \"$TEMP_WL\" -t \"$THREADS\" --timeout 30 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 $DIRSEARCH_EXTRA > \"$TMP\" 2>&1
     
     cd - >/dev/null
 
@@ -300,7 +304,7 @@ scan_target() {
             # كشف Data Leak للصفحات 200 كبيرة
             LEAK_INFO=""
             if { [ "$c" = "200" ] || [ "$c" = "302" ] || [ "$c" = "301" ]; } && [ "$s" -gt 5000 ] 2>/dev/null; then
-                LEAK_RESP=$(detect_data_leak "https://$HOST$p" "$HOST" 60 2>/dev/null)
+                LEAK_RESP=$(detect_data_leak "https://$HOST$p" "$HOST" 60 "" 2>/dev/null)
                 if [[ "$LEAK_RESP" == LEAK* ]]; then
                     LEAK_TYPES=$(echo "$LEAK_RESP" | cut -d'|' -f2)
                     LEAK_INFO=" 🔴 LEAK:${LEAK_TYPES}"

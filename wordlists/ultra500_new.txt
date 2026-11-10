@@ -124,6 +124,8 @@ admin/config
 admin/config.php
 admin/dashboard
 admin/dashboard.php
+admin/dashboard/
+admin/database
 admin/database.php
 admin/db
 admin/error.log
@@ -140,14 +142,20 @@ admin/manage.php
 admin/panel
 admin/panel.php
 admin/phpinfo.php
+admin/profile
+admin/profile/
 admin/reports.php
 admin/settings
 admin/settings.php
 admin/upload.php
 admin/uploads
+admin/user
 admin/user.php
+admin/user/
 admin/users
+admin/users.html
 admin/users.php
+admin/users/
 admin_area
 admin_area.php
 admin_area/
@@ -246,6 +254,7 @@ api/v1/swagger
 api/v1/token
 api/v1/user
 api/v1/users
+api/v1/users/
 api/v2
 api/v2/
 api/v2/admin
@@ -300,6 +309,7 @@ backup.tar
 backup.tar.gz
 backup.tgz
 backup.zip
+body_users_final.html
 build.gradle
 cgi-bin
 cgi-sys
@@ -307,6 +317,7 @@ clientaccesspolicy.xml
 composer.json
 composer.lock
 composer.phar
+config
 config.conf
 config.conf.bak
 config.inc
@@ -364,7 +375,9 @@ dashboard/config.php
 dashboard/index.php
 dashboard/login.php
 dashboard/settings.php
+dashboard/users
 dashboard/users.php
+dashboard/users/
 database.backup
 database.dump
 database.json
@@ -444,6 +457,9 @@ info.php.bak
 install
 install.php
 install/
+leak_admin.html
+leak_settings.html
+leak_users.html
 license.txt
 log
 log/
@@ -496,6 +512,7 @@ password/reset
 php_error.log
 php_errors.log
 phpinfo.php
+phpmyadmin
 ping
 ping/
 pnpm-lock.yaml
@@ -512,6 +529,8 @@ portal/login.php
 portal/settings.php
 portal/users.php
 probe.php
+profile
+profile/
 prometheus
 pyproject.toml
 readme.html
@@ -578,6 +597,7 @@ user
 user/
 user/account
 user/account/
+user/list
 user/login
 user/login.php
 user/login/
@@ -588,6 +608,11 @@ user/profile/
 user/register
 user/register.php
 user/register/
+users
+users.html
+users/
+users/list
+users_real.html
 v2/api-docs
 v3/api-docs
 webmail

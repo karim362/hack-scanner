@@ -19,10 +19,18 @@ detect_data_leak() {
 
     local html
     local tmp_resp=$(mktemp)
+    # بناء args curl من CUSTOM_*
+    local curl_extra=""
+    [ -n "${CUSTOM_HEADER:-}" ] && curl_extra+=" -H \"$CUSTOM_HEADER\""
+    [ -n "${CUSTOM_COOKIE:-}" ] && curl_extra+=" -H \"Cookie: $CUSTOM_COOKIE\""
+    [ -n "${CUSTOM_PROXY:-}" ] && curl_extra+=" -x \"$CUSTOM_PROXY\""
+    [ -n "${CUSTOM_METHOD:-}" ] && curl_extra+=" -X $CUSTOM_METHOD"
+    [ -n "${CUSTOM_DATA:-}" ] && curl_extra+=" --data \"$CUSTOM_DATA\""
+    
     if [ -n "$cookie_file" ] && [ -f "$cookie_file" ]; then
-        curl -sk -b "$cookie_file" --max-time "$max_time" -A "Mozilla/5.0" "$url" -o "$tmp_resp" 2>/dev/null
+        eval curl -sk -b \"$cookie_file\" --max-time \"$max_time\" -A \"Mozilla/5.0\" $curl_extra \"$url\" -o \"$tmp_resp\" 2>/dev/null
     else
-        curl -sk --max-time "$max_time" -A "Mozilla/5.0" "$url" -o "$tmp_resp" 2>/dev/null
+        eval curl -sk --max-time \"$max_time\" -A \"Mozilla/5.0\" $curl_extra \"$url\" -o \"$tmp_resp\" 2>/dev/null
     fi
     local resp_size=$(stat -c%s "$tmp_resp" 2>/dev/null || stat -f%z "$tmp_resp" 2>/dev/null)
     [ -z "$resp_size" ] || [ "$resp_size" -eq 0 ] && { rm -f "$tmp_resp"; return 1; }
@@ -107,6 +115,15 @@ detect_data_leak() {
 analyze_local_file() {
     local file="$1"
     [ ! -f "$file" ] && { echo "✖ File not found: $file"; return 1; }
+    
+    # لو الملف مش قابل للقراءة، ننسخه لمكان مؤقت
+    if [ ! -r "$file" ]; then
+        local tmp_copy="$HOME/.hack-scanner-tmp-$$.html"
+        if cp "$file" "$tmp_copy" 2>/dev/null; then
+            file="$tmp_copy"
+            trap "rm -f '$tmp_copy'" EXIT
+        fi
+    fi
 
     local size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
     echo "📄 Analyzing: $file (${size}B)"
