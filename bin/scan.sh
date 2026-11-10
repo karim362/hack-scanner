@@ -7,6 +7,29 @@ source "$(dirname "$0")/../lib/scan.sh"
 source "$(dirname "$0")/../lib/vulns.sh"
 source "$(dirname "$0")/../lib/waf.sh"
 
+# === SHORTCUTS ===
+# kaha a → --vulns
+# kaha b → --waf
+# kaha c → --analyze (يطلب ملف)
+# kaha d → --help
+if [ $# -gt 0 ]; then
+    case "$1" in
+        a) shift; set -- --vulns "$@" ;;
+        b) shift; set -- --waf "$@" ;;
+        c) 
+            shift
+            if [ -n "${1:-}" ]; then
+                set -- --analyze "$@"
+            else
+                printf "  ${W}➜ Enter HTML file path:${N} "
+                read -r f
+                set -- --analyze "$f"
+            fi
+            ;;
+        d) shift; set -- --help "$@" ;;
+    esac
+fi
+
 # === PARSE ARGS ===
 declare -a TARGETS=()
 ANALYZE_FILE=""
@@ -38,10 +61,20 @@ OPTIONS:
   -p, --param PARAM             Parameter to test (default: q)
   -h, --help                    Show this help
 
+SHORTCUTS:
+  kaha             Interactive scan (prompts for target)
+  kaha a TARGET    Vulnerability scan (--vulns)
+  kaha b TARGET    WAF detection (--waf)
+  kaha c [FILE]    Analyze local HTML file (--analyze)
+  kaha d           Show this help (--help)
+
 EXAMPLES:
+  kaha example.com
+  kaha a example.com
+  kaha b example.com
+  kaha c ~/Downloads/users.html
   kaha --header "Authorization: Bearer X" target.com
   kaha --cookie "PHPSESSID=abc" target.com
-  kaha --analyze ~/Downloads/users.html
 
 HELP
             exit 0
