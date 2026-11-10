@@ -72,6 +72,46 @@ _get_port_meta() {
     done
 }
 
+# ═══════════════════════════════════════════════════════════
+# verify_port_open: يتحقق من فتح المنفذ فعلياً (banner)
+# ═══════════════════════════════════════════════════════════
+verify_port_open() {
+    local host="$1"
+    local port="$2"
+    local service="$3"
+    
+    # منافذ HTTP/HTTPS: نجرب curl
+    case "$port" in
+        80|8000|8080|8081|8888|9090)
+            local code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$host:$port/" 2>/dev/null)
+            [ -n "$code" ] && [ "$code" != "000" ] && return 0
+            return 1
+            ;;
+        443|8443|4443)
+            local code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "https://$host:$port/" 2>/dev/null)
+            [ -n "$code" ] && [ "$code" != "000" ] && return 0
+            return 1
+            ;;
+    esac
+    
+    # لغير HTTP: نجرب نقرأ banner
+    local banner
+    banner=$(timeout 3 bash -c "exec 3<>/dev/tcp/$host/$port 2>/dev/null && echo -e '\\n' >&3 && head -c 40 <&3; exec 3<&- 2>/dev/null" 2>/dev/null | tr -d '\0\r\n')
+    
+    # لو في banner → مؤكد
+    [ -n "$banner" ] && return 0
+    
+    # SSH/SMTP/FTP/MySQL/Redis/MongoDB لازم يبعتوا banner
+    case "$service" in
+        SSH|FTP|SMTP|SMTP-sub|SMTPS|POP3|POP3S|MySQL|Redis|MongoDB|PostgreSQL|VNC)
+            return 1  # مافيش banner → مش مفتوح فعلياً
+            ;;
+    esac
+    
+    # الباقي: نقبله (احتمال مفتوح)
+    return 0
+}
+
 scan_ports() {
     local host="$1"
     local ports_list="21 22 23 25 53 80 110 111 135 139 143 161 389 443 445 465 587 636 873 993 995 1080 1433 1521 2049 2375 2376 3000 3306 3389 4443 5000 5432 5601 5900 6379 7001 7002 8000 8008 8009 8080 8081 8088 8089 8443 8888 9000 9042 9090 9200 9300 10000 11211 27017 27018 27019 50000"
