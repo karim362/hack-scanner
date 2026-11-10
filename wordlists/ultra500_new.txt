@@ -1,3 +1,4 @@
+admin/login
 .DS_Store
 .aws/config
 .aws/credentials
@@ -119,10 +120,14 @@ admin/account.php
 admin/accounts.php
 admin/admin.php
 admin/admin.php.bak
+admin/administrator
+admin/auth
 admin/backup
 admin/backup.php
 admin/config
 admin/config.php
+admin/controlpanel
+admin/cp
 admin/dashboard
 admin/dashboard.php
 admin/dashboard/
@@ -131,13 +136,16 @@ admin/database.php
 admin/db
 admin/error.log
 admin/files
+admin/home
 admin/index.php
 admin/index.php.bak
+admin/log-in
 admin/log.php
-admin/login
 admin/login.php
 admin/login.php.bak
+admin/login/
 admin/logs
+admin/main
 admin/manage
 admin/manage.php
 admin/panel
@@ -146,8 +154,10 @@ admin/phpinfo.php
 admin/profile
 admin/profile/
 admin/reports.php
+admin/secure
 admin/settings
 admin/settings.php
+admin/signin
 admin/upload.php
 admin/uploads
 admin/user
@@ -157,6 +167,7 @@ admin/users
 admin/users.html
 admin/users.php
 admin/users/
+admin/webadmin
 admin_area
 admin_area.php
 admin_area/
@@ -296,6 +307,8 @@ app.log.bak
 apply
 apply/dropbox
 apply/reminder
+auth
+auth/
 backup-2023.zip
 backup-2024.zip
 backup-2025.zip
@@ -598,6 +611,8 @@ settings.yml.bak
 setup
 setup.php
 setup.py
+signin
+signin/
 site.tar.gz
 site.zip
 sitemap.xml

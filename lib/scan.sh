@@ -14,7 +14,12 @@ generate_html_report() {
     local total=${#GLOBAL_HTML_ROWS[@]}
     local targets=${GLOBAL_TARGETS_COUNT:-0}
     local tmp_html=$(mktemp --suffix=.html 2>/dev/null || mktemp)
-    local dest_dir="$HOME/storage/shared/hack-scanner"
+    local dest_dir="/storage/emulated/0/hack-scanner"
+    # fallback لو مافيش صلاحية
+    if ! mkdir -p "$dest_dir" 2>/dev/null; then
+        dest_dir="$HOME/storage/shared/hack-scanner"
+        mkdir -p "$dest_dir" 2>/dev/null
+    fi
 
     # إنشاء المجلد في الذاكرة الداخلية
     if ! mkdir -p "$dest_dir" 2>/dev/null; then
@@ -200,6 +205,18 @@ scan_target() {
 
     cd - >/dev/null
 
+    # === curl مباشر لمسارات مهمة (يتجاوز dirsearch wildcard) ===
+    PRIORITY_PATHS="admin/login admin admin/login.php login login.php admin.php .env .git/config config.php wp-config.php admin/config admin/panel profile"
+    PRIORITY_OUT=$(mktemp -t prio.XXXXXX)
+    for ppath in $PRIORITY_PATHS; do
+        presp=$(curl -sk -o /dev/null -w "%{http_code}|%{size_download}" "https://$HOST/$ppath" --max-time 10 -A "Mozilla/5.0" 2>/dev/null)
+        pc="${presp%|*}"
+        psz="${presp#*|}"
+        if { [ "$pc" = "200" ] || [ "$pc" = "301" ] || [ "$pc" = "302" ]; } && [ "$psz" -gt 0 ] 2>/dev/null; then
+            echo "$pc|$psz|/$ppath" >> "$PRIORITY_OUT"
+        fi
+    done
+
     RAW_OUT=$(mktemp -t raw.XXXXXX)
     while IFS= read -r l; do
         [ -z "$l" ] && continue
@@ -212,6 +229,12 @@ scan_target() {
         s=$(parse_size "$rs")
         echo "$c|$s|$p"
     done < "$TMP" > "$RAW_OUT"
+
+    # دمج نتائج curl المباشر
+    if [ -f "$PRIORITY_OUT" ] && [ -s "$PRIORITY_OUT" ]; then
+        cat "$PRIORITY_OUT" >> "$RAW_OUT"
+    fi
+    sort -u "$RAW_OUT" -o "$RAW_OUT"
 
     printf "\n  ${B}${C}═══ Results ═══${N}\n"
     if [ ! -s "$RAW_OUT" ]; then
