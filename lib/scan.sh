@@ -13,7 +13,7 @@ GLOBAL_TARGETS_COUNT=0
 generate_html_report() {
     local ts=$(date +%Y%m%d-%H%M%S)
     local human_ts=$(date '+%Y-%m-%d %H:%M:%S')
-    local total=${#GLOBAL_HTML_ROWS[@]}
+    local total=$(( ${#GLOBAL_HTML_ROWS[@]} + ${#GLOBAL_PORT_ROWS[@]} ))
     local targets=${GLOBAL_TARGETS_COUNT:-0}
     local tmp_html=$(mktemp --suffix=.html 2>/dev/null || mktemp)
     local dest_dir="/storage/emulated/0/hack-scanner"
@@ -32,10 +32,11 @@ generate_html_report() {
     fi
 
     # إحصائيات
-    local cnt_crit=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|CRITICAL|' || true)
-    local cnt_warn=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|WARNING|' || true)
-    local cnt_info=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|INFO|' || true)
-    local cnt_low=$(printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" | grep -c '|LOW|' || true)
+    # حساب شامل (مسارات + منافذ)
+    local cnt_crit=$( { printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" 2>/dev/null; printf '%s\n' "${GLOBAL_PORT_ROWS[@]}" 2>/dev/null | sed 's/^\([^|]*\)|\([^|]*\)|.*/\2|/' ; } | grep -c 'CRITICAL' || true)
+    local cnt_warn=$( { printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" 2>/dev/null; printf '%s\n' "${GLOBAL_PORT_ROWS[@]}" 2>/dev/null | sed 's/^\([^|]*\)|\([^|]*\)|.*/\2|/' ; } | grep -c 'WARNING' || true)
+    local cnt_info=$( { printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" 2>/dev/null; printf '%s\n' "${GLOBAL_PORT_ROWS[@]}" 2>/dev/null | sed 's/^\([^|]*\)|\([^|]*\)|.*/\2|/' ; } | grep -c 'INFO' || true)
+    local cnt_low=$( { printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" 2>/dev/null; printf '%s\n' "${GLOBAL_PORT_ROWS[@]}" 2>/dev/null | sed 's/^\([^|]*\)|\([^|]*\)|.*/\2|/' ; } | grep -c 'LOW' || true)
 
     # كتابة رأس HTML
     cat > "$tmp_html" << 'HTMLEOF'
@@ -157,9 +158,10 @@ HTMLEOF
     [ -n "$current_host" ] && echo '</tbody></table>' >> "$tmp_html"
 
     # ذيل
-    # Ports section (if any)
+    # Ports section (if any) — مع إغلاق أي جدول مفتوح
     if [ ${#GLOBAL_PORT_ROWS[@]} -gt 0 ]; then
         cat >> "$tmp_html" << 'PORTSEOF'
+</tbody></table>
 <h2 style="color:#58a6ff;margin-top:30px;">🔌 Open Ports</h2>
 <table><thead><tr><th style="width:120px">Severity</th><th style="width:80px">Port</th><th>Service</th><th>Host</th></tr></thead><tbody>
 PORTSEOF
