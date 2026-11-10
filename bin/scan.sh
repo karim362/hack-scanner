@@ -23,6 +23,7 @@ if [ $# -gt 0 ]; then
             fi
             ;;
         d) shift; set -- --help "$@" ;;
+        p) shift; set -- --ports "$@" ;;
     esac
 fi
 
@@ -43,6 +44,7 @@ while [ $# -gt 0 ]; do
         --analyze|-an) ANALYZE_FILE="$2"; shift 2 ;;
         --vulns|-v)    VULN_MODE=1; shift ;;
         --waf|-w)      WAF_MODE=1; shift ;;
+        --ports)       PORT_MODE=1; shift ;;
         --param|-p)    VULN_PARAM="$2"; shift 2 ;;
         --help|-h)
             cat << 'HELP'
@@ -57,6 +59,7 @@ OPTIONS:
   -an, --analyze FILE           Analyze local HTML file
   -v, --vulns                   Scan for LFI/XSS/SQLi/OpenRedirect/SSRF
   -w, --waf                     Detect WAF / Rate Limit / Honeypot
+  --ports                       Scan 60 critical ports (parallel)
   -p, --param PARAM             Parameter to test (default: q)
   -h, --help                    Show this help
 
@@ -66,6 +69,7 @@ SHORTCUTS:
   kaha b TARGET    WAF detection (--waf)
   kaha c [FILE]    Analyze local HTML file (--analyze)
   kaha d           Show this help (--help)
+  kaha p TARGET    Port scan (60 critical ports)
 
 EXAMPLES:
   kaha example.com
@@ -116,6 +120,17 @@ fi
 # === VULN MODE ===
 if [ -n "$VULN_MODE" ] && [ ${#TARGETS[@]} -gt 0 ]; then
     scan_vulns "$(sanitize_url "${TARGETS[0]}")" "${VULN_PARAM:-q}"
+    exit $?
+fi
+
+# === PORT MODE ===
+if [ -n "${PORT_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
+    source "$(dirname "$0")/../lib/ports.sh"
+    for t in "${TARGETS[@]}"; do
+        scan_ports "$(sanitize_url "$t")"
+    done
+    GLOBAL_TARGETS_COUNT=${#TARGETS[@]}
+    generate_html_report
     exit $?
 fi
 
