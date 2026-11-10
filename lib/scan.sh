@@ -75,12 +75,54 @@ generate_html_report() {
   a { color: #58a6ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .footer { text-align: center; margin-top: 30px; color: #8b949e; font-size: 12px; }
+
+  /* Port links */
+  .port-link { color: #58a6ff; text-decoration: none; font-weight: bold; border-bottom: 1px dashed #58a6ff; }
+  .port-link:hover { background: rgba(88,166,255,0.1); padding: 1px 3px; border-radius: 3px; }
+  .port-closed { color: #8b949e; }
+
+  /* Responsive: tablet */
+  @media (max-width: 768px) {
+    body { padding: 10px; font-size: 14px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 18px; }
+    .meta { padding: 10px; font-size: 13px; }
+    .stats { gap: 8px; }
+    .stat { padding: 10px 16px; font-size: 15px; flex: 1 1 calc(50% - 8px); min-width: 120px; }
+    th, td { padding: 8px 6px; font-size: 12px; }
+    .host-header { font-size: 13px; padding: 10px; }
+    .host-header a { word-break: break-all; }
+  }
+
+  /* Responsive: mobile */
+  @media (max-width: 480px) {
+    body { padding: 8px; font-size: 13px; }
+    h1 { font-size: 18px; padding-bottom: 8px; }
+    h2 { font-size: 16px; margin-top: 20px !important; }
+    .stats { gap: 6px; }
+    .stat { padding: 8px 12px; font-size: 14px; flex: 1 1 calc(50% - 6px); }
+    .stat small { font-size: 10px; }
+    table { font-size: 11px; display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    thead, tbody { display: table; width: 100%; }
+    th, td { padding: 6px 4px; font-size: 11px; }
+    th { font-size: 10px; }
+    .host-header { font-size: 12px; padding: 8px; word-break: break-all; }
+    a, .port-link { word-break: break-all; }
+    .sev { font-size: 10px; padding: 2px 5px; }
+  }
+
+  /* Very small screens */
+  @media (max-width: 360px) {
+    .stat { flex: 1 1 100%; }
+    table { font-size: 10px; }
+    th, td { padding: 4px 3px; }
+  }
 </style>
 </head>
 <body>
 <h1>🛡️ Hack Scanner Report</h1>
 <div style="background: #3d1f00; border-left: 4px solid #d29922; padding: 12px; margin-bottom: 20px; border-radius: 6px; color: #d29922;">
-  <strong>⚠️ LEGAL NOTICE:</strong> This report may contain indicators of sensitive data (PII). Encrypted PII is stored in <code>leaks/</code> directory. Handle according to GDPR/CCPA/local laws. Delete after disclosure. Do not publish.
+  <strong>⚠️ LEGAL NOTICE:</strong> This report may contain indicators of sensitive data (PII). PII is stored in <code>leaks/</code> directory. Handle according to GDPR/CCPA/local laws. Delete after disclosure. Do not publish.
 </div>
 HTMLEOF
 
@@ -100,14 +142,14 @@ HTMLEOF
 HTMLEOF
 
     # جدول النتائج — مجمّع حسب الهدف
-    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th><th style="width:200px">Data</th></tr></thead><tbody>' >> "$tmp_html"
+    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
 
     local current_host=""
     for row in "${GLOBAL_HTML_ROWS[@]}"; do
         IFS='|' read -r h sev c sz path <<< "$row"
         if [ "$h" != "$current_host" ]; then
             [ -n "$current_host" ] && echo '</tbody></table>' >> "$tmp_html"
-            echo "<div class='host-header'>🎯 https://${h}</div><table><thead><tr><th style='width:100px'>Severity</th><th style='width:70px'>Code</th><th style='width:100px'>Size</th><th>URL</th></tr></thead><tbody>" >> "$tmp_html"
+            echo "<div class='host-header'>🎯 <a href='https://${h}' target='_blank' style='color:#fff;text-decoration:none;'>https://${h}</a></div><table><thead><tr><th style='width:100px'>Severity</th><th style='width:70px'>Code</th><th style='width:100px'>Size</th><th>URL</th></tr></thead><tbody>" >> "$tmp_html"
             current_host="$h"
         fi
         printf "<tr class='%s'><td><span class='sev %s'>%s</span></td><td>[%s]</td><td>%sB</td><td><a href='https://%s%s' target='_blank'>https://%s%s</a></td></tr>\n"             "$sev" "$sev" "$sev" "$c" "$sz" "$h" "$path" "$h" "$path" >> "$tmp_html"
