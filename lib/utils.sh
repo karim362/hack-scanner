@@ -7,14 +7,23 @@ sanitize_url() {
     local u="$1"
     u="$(printf '%s' "$u" | tr -d '\r\n\t ')"
     u="$(printf '%s' "$u" | sed 's/^\x1b\[[0-9;]*[a-zA-Z]//g')"
-    [[ ! "$u" =~ ^https?:// ]] && u="https://$u"
-    u="${u%%\?*}"; u="${u%%#*}"; u="${u#http://}"; u="${u#https://}"; u="${u%%/*}"
-    # تجاهل الأهداف غير الصالحة (نقطة، فاضي، بدون نقطة)
+    [ -z "$u" ] && { printf '%s' ""; return; }
+    # شيل query/fragment
+    u="${u%%\?*}"; u="${u%%#*}"
+    # شيل scheme لو موجود
+    u="${u#http://}"; u="${u#https://}"
+    # شيل المسار
+    u="${u%%/*}"
+    # تجاهل غير صالح (بس اسمح بـ localhost:PORT و IP:PORT)
     case "$u" in
         ""|"."|".."|*..*) printf '%s' ""; return ;;
     esac
-    [[ "$u" != *.* ]] && { printf '%s' ""; return; }
-    printf '%s' "$u"
+    # اسمح بـ localhost أو IP أو نطاق فيه نقطة
+    if [[ "$u" =~ ^localhost(:[0-9]+)?$ ]] || [[ "$u" =~ ^127\.0\.0\.1(:[0-9]+)?$ ]] || [[ "$u" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?$ ]] || [[ "$u" == *.* ]]; then
+        printf '%s' "$u"
+    else
+        printf '%s' ""
+    fi
 }
 classify_severity() {
     local p="$1"; local code="${2:-200}"; local size="${3:-0}"
@@ -61,4 +70,24 @@ parse_size() {
     if [[ "$s" == *K ]]; then echo "$s" | sed 's/K//' | awk '{printf "%.0f", $1*1024}'
     elif [[ "$s" == *M ]]; then echo "$s" | sed 's/M//' | awk '{printf "%.0f", $1*1048576}'
     else echo "$s" | awk '{printf "%.0f", $1}'; fi
+}
+
+# ═══════════════════════════════════════════════════════════
+# curl خيارات مخصصة (تُملأ من bin/scan.sh)
+# ═══════════════════════════════════════════════════════════
+CUSTOM_HEADER=""
+CUSTOM_COOKIE=""
+CUSTOM_DATA=""
+CUSTOM_PROXY=""
+CUSTOM_METHOD=""
+
+# بناء args curl من الخيارات المخصصة
+build_curl_opts() {
+    local opts=""
+    [ -n "$CUSTOM_HEADER" ] && opts+=" -H \"$CUSTOM_HEADER\""
+    [ -n "$CUSTOM_COOKIE" ] && opts+=" -H \"Cookie: $CUSTOM_COOKIE\""
+    [ -n "$CUSTOM_PROXY" ] && opts+=" -x \"$CUSTOM_PROXY\""
+    [ -n "$CUSTOM_METHOD" ] && opts+=" -X $CUSTOM_METHOD"
+    [ -n "$CUSTOM_DATA" ] && opts+=" --data \"$CUSTOM_DATA\""
+    printf '%s' "$opts"
 }
