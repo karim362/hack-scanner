@@ -79,7 +79,11 @@ run_dashboard() {
                             IFS='|' read -r vtype vurl vdesc <<< "$r"
                             local vpath="${vurl#https://$h}"
                             [ -z "$vpath" ] && vpath="$vurl"
-                            GLOBAL_HTML_ROWS+=("${h}|CRITICAL|0|0|${vpath} 🔴 ${vtype}")
+                            # كود وحجم حقيقي
+                            local vcode vsize
+                            vcode=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 -A "Mozilla/5.0" "$vurl" 2>/dev/null)
+                            vsize=$(curl -sk -o /dev/null -w "%{size_download}" --max-time 5 -A "Mozilla/5.0" "$vurl" 2>/dev/null)
+                            GLOBAL_HTML_ROWS+=("${h}|CRITICAL|${vcode:-0}|${vsize:-0}|${vpath} 🔴 ${vtype}")
                         done
                     else
                         printf "  ${Y}⚠ lib/vulns.sh غير موجود.${N}\n"

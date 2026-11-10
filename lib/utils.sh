@@ -7,6 +7,8 @@ sanitize_url() {
     local u="$1"
     u="$(printf '%s' "$u" | tr -d '\r\n\t ')"
     u="$(printf '%s' "$u" | sed 's/^\x1b\[[0-9;]*[a-zA-Z]//g')"
+    # شيل Unicode/RTL/Arabic (يحتفظ بـ ASCII فقط)
+    u="$(printf '%s' "$u" | LC_ALL=C sed 's/[^a-zA-Z0-9.:/?&=_%#-]//g')"
     [ -z "$u" ] && { printf '%s' ""; return; }
     # شيل query/fragment
     u="${u%%\?*}"; u="${u%%#*}"

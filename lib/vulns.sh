@@ -59,13 +59,21 @@ check_open_redirect() {
     local param="$2"
     local payload="https://evil.com"
     local url="${base_url}?${param}=${payload}"
-    
-    local location=$(curl -skI --max-time 10 -A "Mozilla/5.0" "$url" 2>/dev/null | grep -i '^location:' | head -1)
-    if printf '%s' "$location" | grep -qF "evil.com"; then
-        VULN_RESULTS+=("OpenRedirect|$url|redirects to evil.com")
-        printf "  ${BR}│ 🔴 Open Redirect: %s${N}\n" "$url" >&2
-        return 0
-    fi
+
+    # GET بدل HEAD (أدق) + عرض headers
+    local loc
+    loc=$(curl -sk -o /dev/null -D - --max-time 10 -A "Mozilla/5.0" "$url" 2>/dev/null | grep -i '^location:' | head -1 | sed 's/^[Ll]ocation: *//' | tr -d '\r\n')
+
+    [ -z "$loc" ] && return 1
+
+    # ثغرة حقيقية = Location يبدأ بـ evil.com (مش مجرد يحتويه)
+    case "$loc" in
+        https://evil.com*|http://evil.com*|//evil.com*)
+            VULN_RESULTS+=("OpenRedirect|$url|Location: $loc")
+            printf "  ${BR}│ 🔴 Open Redirect: %s (Location: %s)${N}\n" "$url" "$loc" >&2
+            return 0
+            ;;
+    esac
     return 1
 }
 
