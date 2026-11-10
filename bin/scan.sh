@@ -5,6 +5,7 @@ source "$(dirname "$0")/../lib/ui.sh"
 source "$(dirname "$0")/../lib/utils.sh"
 source "$(dirname "$0")/../lib/scan.sh"
 source "$(dirname "$0")/../lib/vulns.sh"
+source "$(dirname "$0")/../lib/waf.sh"
 
 # === PARSE ARGS ===
 declare -a TARGETS=()
@@ -19,6 +20,7 @@ while [ $# -gt 0 ]; do
         --method|-X)   CUSTOM_METHOD="$2"; shift 2 ;;
         --analyze|-a)  ANALYZE_FILE="$2"; shift 2 ;;
         --vulns|-v)    VULN_MODE=1; shift ;;
+        --waf|-w)      WAF_MODE=1; shift ;;
         --param|-p)    VULN_PARAM="$2"; shift 2 ;;
         --help|-h)
             cat << 'HELP'
@@ -32,6 +34,7 @@ OPTIONS:
   -X, --method POST             HTTP method
   -a, --analyze FILE            Analyze local HTML file
   -v, --vulns                   Scan for LFI/XSS/SQLi/OpenRedirect/SSRF
+  -w, --waf                     Detect WAF / Rate Limit / Honeypot
   -p, --param PARAM             Parameter to test (default: q)
   -h, --help                    Show this help
 
@@ -59,6 +62,11 @@ fi
 banner
 
 # === VULN MODE ===
+if [ -n "${WAF_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
+    scan_waf "${TARGETS[0]}"
+    exit $?
+fi
+
 if [ -n "${VULN_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
     scan_vulns "$(sanitize_url "${TARGETS[0]}")" "${VULN_PARAM:-q}"
     exit $?
