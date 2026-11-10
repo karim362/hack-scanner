@@ -158,7 +158,7 @@ scan_target() {
         WILDCARD_SIZE=""
     fi
 
-    TEMP_WL=$(mktemp)
+    TEMP_WL=$(mktemp -t wl.XXXXXX)
     cp "$WL" "$TEMP_WL"
     
     # Auto-discovery (Robots & Sitemap)
@@ -168,23 +168,25 @@ scan_target() {
     sort -u "$TEMP_WL" -o "$TEMP_WL"
 
     THREADS=60
-    TMP=$(mktemp)
+    TMP=$(mktemp -t ds.XXXXXX)
     
     printf "  ${C}ℹ Scanning $(wc -l < "$TEMP_WL" | tr -d ' ') paths @ ${THREADS} threads...${N}\n"
     
     cd "$TOOLS/dirsearch" 2>/dev/null || exit
     if [ -x ".venv/bin/python3" ]; then PYTHON=".venv/bin/python3"; else PYTHON="python3"; fi
     
-    DIRSEARCH_EXTRA=""
-[ -n "$CUSTOM_HEADER" ] && DIRSEARCH_EXTRA+=" -H \"$CUSTOM_HEADER\""
-[ -n "$CUSTOM_COOKIE" ] && DIRSEARCH_EXTRA+=" -H \"Cookie: $CUSTOM_COOKIE\""
-[ -n "$CUSTOM_PROXY" ] && DIRSEARCH_EXTRA+=" --proxy \"$CUSTOM_PROXY\""
-eval $PYTHON \"$DIRSEARCH\" -u \"$TARGET\" -w \"$TEMP_WL\" -t \"$THREADS\" --timeout 30 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408 $DIRSEARCH_EXTRA > \"$TMP\" 2>&1
+    # بناء args dirsearch كمصفوفة (آمن من eval)
+    local -a DS_ARGS=("$DIRSEARCH" -u "$TARGET" -w "$TEMP_WL" -t "$THREADS" --timeout 30 --random-agent -i 200,301,302,307,308 -x 403,404,400,405,408)
+    [ -n "$CUSTOM_HEADER" ] && DS_ARGS+=(-H "$CUSTOM_HEADER")
+    [ -n "$CUSTOM_COOKIE" ] && DS_ARGS+=(-H "Cookie: $CUSTOM_COOKIE")
+    [ -n "$CUSTOM_PROXY" ] && DS_ARGS+=(--proxy "$CUSTOM_PROXY")
+
+    "$PYTHON" "${DS_ARGS[@]}" > "$TMP" 2>&1
     
     cd - >/dev/null
 
     # تحليل النتائج واستخراج البيانات
-    RAW_OUT=$(mktemp)
+    RAW_OUT=$(mktemp -t raw.XXXXXX)
     while IFS= read -r l; do
         [ -z "$l" ] && continue
         c=$(printf '%s' "$l" | grep -oE '\] [0-9]+ ' | head -1 | tr -d '] ')
@@ -198,7 +200,7 @@ eval $PYTHON \"$DIRSEARCH\" -u \"$TARGET\" -w \"$TEMP_WL\" -t \"$THREADS\" --tim
 
     # === فلترة wildcard: حذف المسارات اللي عندها نفس (code+size) متكرر ===
     if [ -s "$RAW_OUT" ]; then
-        FILTERED=$(mktemp)
+        FILTERED=$(mktemp -t filt.XXXXXX)
         # حساب إجمالي عدد redirects لكل status code (لكشف catch-all)
         awk -F'|' '{
             key=$1"|"$2;
@@ -239,7 +241,7 @@ eval $PYTHON \"$DIRSEARCH\" -u \"$TARGET\" -w \"$TEMP_WL\" -t \"$THREADS\" --tim
         printf "  ${Y}⚠ No paths found.${N}\n"
     else
         # تجميع النتائج وتصنيفها
-        SORTED_OUT=$(mktemp)
+        SORTED_OUT=$(mktemp -t sorted.XXXXXX)
         WILDCARD_MSGS=()
         CATCH_ALL_301=0
         CATCH_ALL_302=0
@@ -269,11 +271,11 @@ eval $PYTHON \"$DIRSEARCH\" -u \"$TARGET\" -w \"$TEMP_WL\" -t \"$THREADS\" --tim
         done < "$RAW_OUT"
 
         # ترتيب حسب الخطورة
-        FINAL_OUT=$(mktemp)
+        FINAL_OUT=$(mktemp -t final.XXXXXX)
         awk -F'|' '{r=4; if($1=="CRITICAL")r=1; else if($1=="WARNING")r=2; else if($1=="INFO")r=3; print r"|"$0}' "$SORTED_OUT" | sort -t'|' -k1,1n | cut -d'|' -f2- > "$FINAL_OUT"
 
         # دمج المسارات المكررة
-        DEDUP_OUT=$(mktemp)
+        DEDUP_OUT=$(mktemp -t dedup.XXXXXX)
         awk -F'|' '{
             p=$4; gsub(/\/$/, "", p);
             if (!(p in seen)) { seen[p]=1; print $0 }

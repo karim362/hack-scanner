@@ -34,8 +34,13 @@ classify_severity() {
         echo "$p" | grep -qiE 'robots|\.txt|security\.txt|ads\.txt' || { echo LOW; return; }
     fi
 
-    # تحويلات (3xx): أي 3xx = LOW
-    if [[ "$code" =~ ^3 ]]; then echo "LOW"; return; fi
+    # تحويلات (3xx): LOW — إلا لو حجم كبير (>50KB) = تسريب محتمل
+    if [[ "$code" =~ ^3 ]]; then
+        if [ "$size" -gt 51200 ] 2>/dev/null; then
+            echo "CRITICAL"; return
+        fi
+        echo "LOW"; return
+    fi
 
     # ملفات حساسة (CRITICAL) — فقط لو 200
     if echo "$p" | grep -qiE '\.(env|git|ssh|aws|docker|kube|pem|key|ppk)|docker-compose|Dockerfile|config|settings|wp-config|backup|database|dump|\.sql|\.bak|\.swp|credentials|secret|password|adminer|phpmyadmin|pma|setup-config'; then

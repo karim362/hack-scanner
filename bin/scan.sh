@@ -8,20 +8,16 @@ source "$(dirname "$0")/../lib/vulns.sh"
 source "$(dirname "$0")/../lib/waf.sh"
 
 # === SHORTCUTS ===
-# kaha a → --vulns
-# kaha b → --waf
-# kaha c → --analyze (يطلب ملف)
-# kaha d → --help
 if [ $# -gt 0 ]; then
     case "$1" in
         a) shift; set -- --vulns "$@" ;;
         b) shift; set -- --waf "$@" ;;
-        c) 
+        c)
             shift
             if [ -n "${1:-}" ]; then
                 set -- --analyze "$@"
             else
-                printf "  ${W}➜ Enter HTML file path:${N} "
+                printf "  Enter HTML file path: "
                 read -r f
                 set -- --analyze "$f"
             fi
@@ -33,15 +29,18 @@ fi
 # === PARSE ARGS ===
 declare -a TARGETS=()
 ANALYZE_FILE=""
+VULN_MODE=""
+VULN_PARAM=""
+WAF_MODE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --header|-H)   CUSTOM_HEADER="$2"; shift 2 ;;
-        --cookie|-b)   CUSTOM_COOKIE="$2"; shift 2 ;;
+        --cookie|--ck) CUSTOM_COOKIE="$2"; shift 2 ;;
         --data|-d)     CUSTOM_DATA="$2"; shift 2 ;;
         --proxy|-x)    CUSTOM_PROXY="$2"; shift 2 ;;
         --method|-X)   CUSTOM_METHOD="$2"; shift 2 ;;
-        --analyze|-a)  ANALYZE_FILE="$2"; shift 2 ;;
+        --analyze|-an) ANALYZE_FILE="$2"; shift 2 ;;
         --vulns|-v)    VULN_MODE=1; shift ;;
         --waf|-w)      WAF_MODE=1; shift ;;
         --param|-p)    VULN_PARAM="$2"; shift 2 ;;
@@ -51,11 +50,11 @@ Usage: kaha [OPTIONS] [TARGET...]
 
 OPTIONS:
   -H, --header "Name: Value"    Add custom header
-  -b, --cookie "name=value"     Add cookie
+  --ck, --cookie "name=value"   Add cookie
   -d, --data "key=val&k2=v2"    POST data
   -x, --proxy "socks5://..."    Use proxy
   -X, --method POST             HTTP method
-  -a, --analyze FILE            Analyze local HTML file
+  -an, --analyze FILE           Analyze local HTML file
   -v, --vulns                   Scan for LFI/XSS/SQLi/OpenRedirect/SSRF
   -w, --waf                     Detect WAF / Rate Limit / Honeypot
   -p, --param PARAM             Parameter to test (default: q)
@@ -94,17 +93,7 @@ fi
 # === MAIN ===
 banner
 
-# === VULN MODE ===
-if [ -n "${WAF_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
-    scan_waf "${TARGETS[0]}"
-    exit $?
-fi
-
-if [ -n "${VULN_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
-    scan_vulns "$(sanitize_url "${TARGETS[0]}")" "${VULN_PARAM:-q}"
-    exit $?
-fi
-
+# LEGAL WARNING
 printf "\n  ${BR}⚠ LEGAL WARNING:${N}\n"
 printf "  ${Y}Use ONLY on systems you own or have written permission to test.${N}\n"
 printf "  ${Y}PII found will be saved in ~/storage/shared/hack-scanner/leaks/${N}\n\n"
@@ -118,6 +107,19 @@ if [ -n "$CUSTOM_HEADER" ] || [ -n "$CUSTOM_COOKIE" ] || [ -n "$CUSTOM_DATA" ] |
     printf "\n\n"
 fi
 
+# === WAF MODE ===
+if [ -n "$WAF_MODE" ] && [ ${#TARGETS[@]} -gt 0 ]; then
+    scan_waf "${TARGETS[0]}"
+    exit $?
+fi
+
+# === VULN MODE ===
+if [ -n "$VULN_MODE" ] && [ ${#TARGETS[@]} -gt 0 ]; then
+    scan_vulns "$(sanitize_url "${TARGETS[0]}")" "${VULN_PARAM:-q}"
+    exit $?
+fi
+
+# === INTERACTIVE INPUT ===
 if [ ${#TARGETS[@]} -eq 0 ]; then
     printf "  ${W}➜ Enter target URL (or paste multiple URLs, one per line):${N}\n"
     printf "  ${D}Press Enter twice to start scanning.${N}\n\n"
@@ -127,6 +129,7 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
     done
 fi
 
+# === VALIDATE ===
 VALID=()
 for t in "${TARGETS[@]}"; do
     [ -n "$(sanitize_url "$t")" ] && VALID+=("$t")
