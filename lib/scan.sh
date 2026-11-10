@@ -358,6 +358,7 @@ scan_target() {
         PREV=""
         while IFS='|' read -r sev c s p; do
             [ -z "$sev" ] && continue
+            [[ "$sev" == __* || "$c" == __* ]] && continue
             [ -z "$s" ] && continue
             [ "$s" -eq 0 ] 2>/dev/null && continue
             if [ "$sev" != "$PREV" ]; then
@@ -378,6 +379,13 @@ scan_target() {
     fi
 
     GLOBAL_TARGETS_COUNT=$((GLOBAL_TARGETS_COUNT + 1))
+    # OOM prevention: بعد كل 15 هدف، احفظ النتائج في ملف
+    if [ "$GLOBAL_TARGETS_COUNT" -ge 15 ] && [ $((GLOBAL_TARGETS_COUNT % 15)) -eq 0 ]; then
+        local flush_file="$HOME/.hack-scanner-flush-$$.txt"
+        printf '%s\n' "${GLOBAL_HTML_ROWS[@]}" >> "$flush_file"
+        GLOBAL_HTML_ROWS=()
+        printf "  ${D}  (memory flush: %s rows saved to %s)${N}\n" "$GLOBAL_TARGETS_COUNT" "$flush_file" >&2
+    fi
     rm -f "$TEMP_WL" "$TMP" "$RAW_OUT"
     printf "\n  ${G}✓ Finished scanning: $HOST${N}\n"
 }
