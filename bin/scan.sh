@@ -6,6 +6,7 @@ source "$(dirname "$0")/../lib/utils.sh"
 source "$(dirname "$0")/../lib/scan.sh"
 source "$(dirname "$0")/../lib/vulns.sh"
 source "$(dirname "$0")/../lib/waf.sh"
+source "$(dirname "$0")/../lib/dashboard.sh"
 
 # === SHORTCUTS ===
 if [ $# -gt 0 ]; then
@@ -23,6 +24,7 @@ if [ $# -gt 0 ]; then
             fi
             ;;
         d) shift; set -- --help "$@" ;;
+        dashboard|menu) shift; DASHBOARD_MODE=1 ;;
         p) shift; set -- --ports "$@" ;;
     esac
 fi
@@ -135,13 +137,14 @@ if [ -n "${PORT_MODE:-}" ] && [ ${#TARGETS[@]} -gt 0 ]; then
 fi
 
 # === INTERACTIVE INPUT ===
+if [ -n "${DASHBOARD_MODE:-}" ]; then
+    run_dashboard
+    exit $?
+fi
+
 if [ ${#TARGETS[@]} -eq 0 ]; then
-    printf "  ${W}➜ Enter target URL (or paste multiple URLs, one per line):${N}\n"
-    printf "  ${D}Press Enter twice to start scanning.${N}\n\n"
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && break
-        TARGETS+=("$line")
-    done
+    run_dashboard
+    exit $?
 fi
 
 # === VALIDATE ===
