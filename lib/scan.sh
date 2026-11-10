@@ -144,7 +144,9 @@ HTMLEOF
 
     # جدول النتائج — مجمّع حسب الهدف
     if [ ${#GLOBAL_HTML_ROWS[@]} -gt 0 ]; then
+        if [ ${#GLOBAL_HTML_ROWS[@]} -gt 0 ]; then
         echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
+    fi
     fi
 
     local current_host=""
