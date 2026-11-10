@@ -143,7 +143,9 @@ HTMLEOF
 HTMLEOF
 
     # جدول النتائج — مجمّع حسب الهدف
-    echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
+    if [ ${#GLOBAL_HTML_ROWS[@]} -gt 0 ]; then
+        echo '<table><thead><tr><th style="width:100px">Severity</th><th style="width:70px">Code</th><th style="width:100px">Size</th><th>URL</th></tr></thead><tbody>' >> "$tmp_html"
+    fi
 
     local current_host=""
     for row in "${GLOBAL_HTML_ROWS[@]}"; do
