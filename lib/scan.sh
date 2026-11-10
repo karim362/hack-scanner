@@ -302,6 +302,40 @@ scan_target() {
     fi
     sort -u "$RAW_OUT" -o "$RAW_OUT"
 
+    # === Post-hoc wildcard filter (10+ same code+size OR 15+ 3xx) ===
+    if [ -s "$RAW_OUT" ]; then
+        POSTHOC=$(mktemp -t post.XXXXXX)
+        awk -F'|' '{
+            if ($1 >= 300 && $1 < 400) {
+                rkey = $1
+                rcount[rkey]++
+                rlines[rkey] = rlines[rkey] $0 "\n"
+            } else {
+                key = $1 "|" $2
+                count[key]++
+                lines[key] = lines[key] $0 "\n"
+            }
+        }
+        END {
+            for (k in rcount) {
+                if (rcount[k] >= 15) {
+                    printf "__WILDCARD_3XX__|%s|0|%d\n", k, rcount[k]
+                } else {
+                    printf "%s", rlines[k]
+                }
+            }
+            for (k in count) {
+                if (count[k] >= 10) {
+                    split(k, parts, "|")
+                    printf "__WILDCARD__|%s|%s|%d\n", parts[1], parts[2], count[k]
+                } else {
+                    printf "%s", lines[k]
+                }
+            }
+        }' "$RAW_OUT" > "$POSTHOC"
+        mv "$POSTHOC" "$RAW_OUT"
+    fi
+
     printf "\n  ${B}${C}═══ Results ═══${N}\n"
     if [ ! -s "$RAW_OUT" ]; then
         printf "  ${Y}⚠ No paths found.${N}\n"
